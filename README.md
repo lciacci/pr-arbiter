@@ -76,10 +76,10 @@ Matching is approximate (file + category match, line within ±3). Exact line mat
 - [x] Project scaffolding
 - [x] Corpus: 20 PRs with rubrics
 - [x] Eval harness skeleton
-- [ ] Reviewer agent v0
-- [ ] Arbiter agent v0
-- [ ] Baseline eval run
-- [ ] Iteration log
+- [x] Reviewer agent v0
+- [x] Arbiter agent v0
+- [x] Baseline eval run (see `results/baseline_notes.md`)
+- [ ] Iteration: arbiter prompt rewrite + reviewer correctness-critical bias
 
 ## Running the eval
 
