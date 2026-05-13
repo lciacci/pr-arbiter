@@ -1,10 +1,21 @@
 """
-Arbiter agent: triages the reviewer's findings.
+Arbiter agent (iter2): independent second-pass reviewer.
 
-Single Anthropic API call per PR. Sees diff + before + after + reviewer findings.
-Outputs a filtered, re-prioritized list. Must be willing to drop findings,
-not just relabel them. Returns the rubric shape (rationale field is stripped
-before returning so the eval harness sees the canonical shape).
+The iter0/iter1 design treated the arbiter as a triage filter over the
+reviewer's findings. The diagnostic in results/diagnostic_notes.md showed that
+filter-only arbitration cannot beat a well-calibrated reviewer: lenient drops
+true positives faster than false positives, strict drops criticals. So iter2
+changes the arbiter's job.
+
+This arbiter does an INDEPENDENT review of the diff. It sees the reviewer's
+findings as context (anti-redundancy framing) but is allowed — and explicitly
+encouraged — to surface new findings the reviewer missed. The expected
+contribution is correctness-critical bugs and architectural issues (reinvented
+helpers, cross-function concerns) that the single-pass reviewer's pattern
+matching tends to skip.
+
+The runner (`eval/run_baseline.py`) unions arbiter and reviewer findings with
+approximate-match dedup, keeping the higher-severity version of any duplicate.
 """
 
 from __future__ import annotations
@@ -13,27 +24,29 @@ import json
 
 from anthropic import Anthropic
 
-# Same model as reviewer — keeps the ablation clean. If the arbiter shows
-# signal but underperforms, swapping to Opus is a deliberate session 3 move.
 MODEL = "claude-sonnet-4-6"
 
-ARBITER_SYSTEM = """You are an arbiter triaging a code reviewer's findings on a pull request. The reviewer was instructed to be adversarial; your job is the opposite — precision over recall.
+ARBITER_SYSTEM = """You are a second-pass code reviewer. A first reviewer has already looked at this PR. Your job is to find what the first reviewer missed — not to triage or re-rank what they already found.
 
-Default action: DROP. A finding survives arbitration only if you can re-state the bug in your own words from the after-state code without referring back to the reviewer's rationale. If you can't reproduce the issue from the code alone, drop it. "It might be a problem" is not enough. "This is a real bug because <specific behavior from the code>" is.
+Your focus areas, in order:
+1. Correctness-critical bugs. The first reviewer is good at security vuln patterns (path traversal, SQLi, credential leaks) but often misses correctness-critical bugs: missing None / empty / type checks on return values, off-by-one, race conditions, missing branches, silent error suppression that violates the function's contract, state changes that aren't persisted.
+2. Architectural issues. Code that reinvents an existing helper in the same file, function-level coupling that should use existing abstractions, configuration that's set but never read or saved.
+3. Things hiding behind style. Style-heavy PRs sometimes carry a real bug under the formatting noise — a parameter ordering swap, a sign flip, a condition negation. Read the diff for behavior changes, not just structure changes.
 
-First, ask yourself: does this PR have any real issue at all? Some PRs are clean refactors with nothing to flag. If so, return an empty list. The reviewer's findings on a clean PR are all hallucinations — drop everything. Do not feel obligated to keep findings just because the reviewer produced them.
+Anti-redundancy rules:
+- The first reviewer's findings are shown to you as context. Do NOT re-report the same issues with different words. If you would have flagged the same bug at the same line, skip it — the runner merges your output with theirs.
+- A finding "at the same line as a reviewer finding but in a different category or describing a different mechanism" counts as new. Report it.
+- If you re-read the code and the reviewer's finding looks wrong, do NOT drop it from their list — your output is additive, not subtractive. Note your disagreement in the rationale of any of your own findings if relevant, but only your own findings appear in your output.
 
-Other principles:
-- Reviewer optimizes for catching everything. You optimize for what should actually block or land in the PR. It is correct for your output to be much shorter than the reviewer's.
-- Watch for duplicate findings — the reviewer sometimes splits one bug into two findings (e.g., "logs PII" and "logs credential" reported separately when they're the same log line). Merge or drop the duplicate; keep the strongest one.
-- Demote severity when the reviewer inflated it. A real issue at the wrong tier is still worth keeping at the correct severity. Use the same severity definitions as the reviewer; do not invent new tiers.
-- Do not invent new findings. Your output must be a subset of (or re-prioritization of) the reviewer's findings — same file, same approximate location. If the reviewer missed something, that is a reviewer problem, not an arbiter problem.
+Calibration:
+- A clean refactor with nothing the reviewer caught is fine — return an empty list rather than invent findings. The same severity anchors apply (critical = exploitable / RCE / state corruption / broken contract on happy path; high = real bug in production; medium = worth fixing; low = style nit). Default to the lower tier when in doubt.
+- If you find no NEW issues beyond what the reviewer caught, return an empty list. That is the correct answer when the reviewer was thorough.
 
-For each finding you keep, write a short rationale describing why it survives arbitration. This is for offline debugging, not graded — but its discipline is the point: if you can't write a clear rationale from the code alone, you shouldn't have kept the finding."""
+For each finding, write a short rationale that explains the bug from the code alone. This is for offline debugging."""
 
 ARBITER_TOOL = {
-    "name": "report_triaged_findings",
-    "description": "Report your triaged findings. Use an empty list to drop all findings.",
+    "name": "report_independent_findings",
+    "description": "Report findings the first reviewer missed. Empty list is valid if the reviewer was thorough or the PR is clean.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -60,7 +73,7 @@ ARBITER_TOOL = {
                         "description": {"type": "string"},
                         "rationale": {
                             "type": "string",
-                            "description": "Why this finding survives arbitration. For debugging; stripped before scoring.",
+                            "description": "Why this is a real issue, in terms of the after-state code. For debugging; stripped before scoring.",
                         },
                     },
                     "required": ["file", "line_range", "category", "severity", "description", "rationale"],
@@ -83,11 +96,11 @@ def _client() -> Anthropic:
 
 
 def arbitrate(agent_input: dict) -> list[dict]:
-    """Arbitrate over the reviewer's findings.
+    """Run the independent second-pass reviewer.
 
     :param agent_input: must contain pr_id, before, after, diff, reviewer_findings.
-    :returns: filtered/re-prioritized list of findings in rubric shape
-        (rationale stripped).
+    :returns: arbiter's own findings (rubric shape, rationale stripped). The
+        runner is responsible for merging with reviewer findings.
     """
     user_msg = _format_user_message(agent_input)
     resp = _client().messages.create(
@@ -95,19 +108,18 @@ def arbitrate(agent_input: dict) -> list[dict]:
         max_tokens=4096,
         system=ARBITER_SYSTEM,
         tools=[ARBITER_TOOL],
-        tool_choice={"type": "tool", "name": "report_triaged_findings"},
+        tool_choice={"type": "tool", "name": "report_independent_findings"},
         messages=[{"role": "user", "content": user_msg}],
     )
     for block in resp.content:
-        if getattr(block, "type", None) == "tool_use" and block.name == "report_triaged_findings":
-            raw = block.input.get("findings", [])
-            return _strip_rationale(_validate(raw))
+        if getattr(block, "type", None) == "tool_use" and block.name == "report_independent_findings":
+            return _strip_rationale(_validate(block.input.get("findings", [])))
     return []
 
 
 def _format_user_message(agent_input: dict) -> str:
     return (
-        "Triage the reviewer's findings on this pull request.\n\n"
+        "Independent second-pass review of this pull request.\n\n"
         "# Diff\n\n"
         "```\n"
         f"{agent_input['diff']}\n"
@@ -120,12 +132,12 @@ def _format_user_message(agent_input: dict) -> str:
         "```python\n"
         f"{agent_input['after']}\n"
         "```\n\n"
-        "# Reviewer's findings\n\n"
+        "# First reviewer's findings (context — do not re-report these)\n\n"
         "```json\n"
         f"{json.dumps(agent_input['reviewer_findings'], indent=2)}\n"
         "```\n\n"
-        "Return your triaged findings via the report_triaged_findings tool. "
-        "Drop, demote, or re-prioritize as you see fit. Empty list is valid."
+        "Report any findings the first reviewer missed via report_independent_findings. "
+        "Empty list is valid if the reviewer was thorough."
     )
 
 
@@ -144,19 +156,61 @@ def _validate(findings: list) -> list[dict]:
 
 
 def _strip_rationale(findings: list[dict]) -> list[dict]:
-    """Return findings in canonical rubric shape, without the rationale field."""
     return [{k: v for k, v in f.items() if k != "rationale"} for f in findings]
 
 
+# ---------- merge helper ----------
+
+_SEV_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+
+
+def merge_findings(
+    reviewer_findings: list[dict],
+    arbiter_findings: list[dict],
+    line_tolerance: int = 3,
+) -> list[dict]:
+    """Union reviewer + arbiter findings, deduping by approximate match.
+
+    Approximate match: same file + category, line midpoint within ±line_tolerance.
+    When a pair matches, keep the higher-severity version; on a tie, prefer the
+    reviewer's finding (it ran first).
+    """
+    merged: list[dict] = list(reviewer_findings)
+    for a in arbiter_findings:
+        if not _is_dup(a, merged, line_tolerance):
+            merged.append(a)
+            continue
+        # Replace dup with higher-severity version
+        for i, m in enumerate(merged):
+            if _findings_match(m, a, line_tolerance):
+                if _SEV_RANK.get(a.get("severity"), 0) > _SEV_RANK.get(m.get("severity"), 0):
+                    merged[i] = a
+                break
+    return merged
+
+
+def _is_dup(f: dict, existing: list[dict], tol: int) -> bool:
+    return any(_findings_match(f, m, tol) for m in existing)
+
+
+def _findings_match(a: dict, b: dict, tol: int) -> bool:
+    if a.get("file") != b.get("file"):
+        return False
+    if a.get("category") != b.get("category"):
+        return False
+    a_lines = a.get("line_range", [0, 0])
+    b_lines = b.get("line_range", [0, 0])
+    a_mid = (a_lines[0] + a_lines[1]) / 2
+    b_mid = (b_lines[0] + b_lines[1]) / 2
+    return abs(a_mid - b_mid) <= tol
+
+
 if __name__ == "__main__":
-    # Smoke run: take reviewer output for one PR, arbitrate, print.
     import sys
     from pathlib import Path
-
     from dotenv import find_dotenv, load_dotenv
 
     load_dotenv(find_dotenv(), override=True)
-
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from agents.reviewer import review
     from eval.harness import load_agent_input
@@ -164,5 +218,6 @@ if __name__ == "__main__":
     pr_id = sys.argv[1] if len(sys.argv) > 1 else "pr_001"
     ai = load_agent_input(pr_id)
     rev = review(ai)
-    triaged = arbitrate({**ai, "reviewer_findings": rev})
-    print(json.dumps({"reviewer": rev, "arbiter": triaged}, indent=2))
+    arb = arbitrate({**ai, "reviewer_findings": rev})
+    merged = merge_findings(rev, arb)
+    print(json.dumps({"reviewer": rev, "arbiter": arb, "merged": merged}, indent=2))

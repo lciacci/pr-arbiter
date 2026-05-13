@@ -80,7 +80,8 @@ Matching is approximate (file + category match, line within ±3). Exact line mat
 - [x] Arbiter agent v0 + v1 (default-drop framing; overshot, see `results/iter1_notes.md`)
 - [x] Baseline eval run (see `results/baseline_notes.md`)
 - [x] Iter1 eval run (see `results/iter1_notes.md`) — headline: reviewer-alone wins
-- [ ] Iter2: arbiter sweet spot, or architectural change (see iter1 notes)
+- [x] Iter2: independent-arbiter architecture (see `results/iter2_notes.md`) — headline: catches a critical the reviewer missed, at precision cost
+- [ ] Iter3: precision-recovery pass over merged findings
 
 ## Running the eval
 

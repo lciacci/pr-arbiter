@@ -32,12 +32,21 @@ from eval.harness import list_pr_ids, load_agent_input, run_eval, score_pr, summ
 
 
 def _load_arbiter():
-    """Lazy-import arbiter so this script runs before arbiter.py exists."""
+    """Lazy-import arbiter so this script runs before arbiter.py exists.
+
+    Returns (arbitrate_fn, merge_fn) — the merge function is iter2; older
+    arbiter modules without merge_findings return (arbitrate_fn, None) and the
+    runner falls back to using the arbiter output as the final list.
+    """
     try:
         from agents.arbiter import arbitrate
-        return arbitrate
     except ImportError:
-        return None
+        return None, None
+    try:
+        from agents.arbiter import merge_findings
+    except ImportError:
+        merge_findings = None
+    return arbitrate, merge_findings
 
 
 def main() -> int:
@@ -55,8 +64,9 @@ def main() -> int:
 
     pr_ids = args.prs or list_pr_ids()
     arbiter_fn = None
+    merge_fn = None
     if args.with_arbiter:
-        arbiter_fn = _load_arbiter()
+        arbiter_fn, merge_fn = _load_arbiter()
         if arbiter_fn is None:
             print("ERROR: --with-arbiter requested but agents/arbiter.py not found.", file=sys.stderr)
             return 1
@@ -80,8 +90,16 @@ def main() -> int:
             reviewer_out = reviewer_cache[pr_id]
         else:
             reviewer_out = review(agent_input)
+        arbiter_out: list[dict] = []
         if arbiter_fn is not None:
-            final = arbiter_fn({**agent_input, "reviewer_findings": reviewer_out})
+            arbiter_out = arbiter_fn({**agent_input, "reviewer_findings": reviewer_out})
+            if merge_fn is not None:
+                # iter2 path: arbiter returns its own findings; runner unions
+                # with reviewer findings using approximate-match dedup.
+                final = merge_fn(reviewer_out, arbiter_out)
+            else:
+                # iter0/iter1 path: arbiter's output IS the final list (filter).
+                final = arbiter_out
         else:
             final = reviewer_out
         score = score_pr(pr_id, final)
@@ -90,6 +108,7 @@ def main() -> int:
             "pr_id": pr_id,
             "elapsed_s": round(elapsed, 2),
             "reviewer_findings": reviewer_out,
+            "arbiter_findings": arbiter_out,
             "final_findings": final,
             "score": asdict(score),
         })
