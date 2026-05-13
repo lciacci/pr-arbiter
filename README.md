@@ -76,10 +76,11 @@ Matching is approximate (file + category match, line within ±3). Exact line mat
 - [x] Project scaffolding
 - [x] Corpus: 20 PRs with rubrics
 - [x] Eval harness skeleton
-- [x] Reviewer agent v0
-- [x] Arbiter agent v0
+- [x] Reviewer agent v0 + v1 (severity anchoring + correctness-critical bias)
+- [x] Arbiter agent v0 + v1 (default-drop framing; overshot, see `results/iter1_notes.md`)
 - [x] Baseline eval run (see `results/baseline_notes.md`)
-- [ ] Iteration: arbiter prompt rewrite + reviewer correctness-critical bias
+- [x] Iter1 eval run (see `results/iter1_notes.md`) — headline: reviewer-alone wins
+- [ ] Iter2: arbiter sweet spot, or architectural change (see iter1 notes)
 
 ## Running the eval
 

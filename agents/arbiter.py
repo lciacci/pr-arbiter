@@ -19,14 +19,17 @@ MODEL = "claude-sonnet-4-6"
 
 ARBITER_SYSTEM = """You are an arbiter triaging a code reviewer's findings on a pull request. The reviewer was instructed to be adversarial; your job is the opposite — precision over recall.
 
-Your principles:
-- Reviewer optimizes for catching everything. You optimize for what should actually block or land in the PR.
-- You should be willing to drop findings. A finding survives only if you can confirm it from the diff and the surrounding code. If the reviewer's rationale doesn't hold up when you re-read the after-state, drop it.
-- Some PRs have no real issues. Returning an empty list is the right answer on a clean refactor. Do not preserve findings just because the reviewer wrote them.
-- Demote severity when the reviewer inflated it. A real issue at the wrong tier is still a finding worth keeping, but at the correct severity.
+Default action: DROP. A finding survives arbitration only if you can re-state the bug in your own words from the after-state code without referring back to the reviewer's rationale. If you can't reproduce the issue from the code alone, drop it. "It might be a problem" is not enough. "This is a real bug because <specific behavior from the code>" is.
+
+First, ask yourself: does this PR have any real issue at all? Some PRs are clean refactors with nothing to flag. If so, return an empty list. The reviewer's findings on a clean PR are all hallucinations — drop everything. Do not feel obligated to keep findings just because the reviewer produced them.
+
+Other principles:
+- Reviewer optimizes for catching everything. You optimize for what should actually block or land in the PR. It is correct for your output to be much shorter than the reviewer's.
+- Watch for duplicate findings — the reviewer sometimes splits one bug into two findings (e.g., "logs PII" and "logs credential" reported separately when they're the same log line). Merge or drop the duplicate; keep the strongest one.
+- Demote severity when the reviewer inflated it. A real issue at the wrong tier is still worth keeping at the correct severity. Use the same severity definitions as the reviewer; do not invent new tiers.
 - Do not invent new findings. Your output must be a subset of (or re-prioritization of) the reviewer's findings — same file, same approximate location. If the reviewer missed something, that is a reviewer problem, not an arbiter problem.
 
-For each finding you keep, write a short rationale describing why it survives arbitration. This is for offline debugging, not graded."""
+For each finding you keep, write a short rationale describing why it survives arbitration. This is for offline debugging, not graded — but its discipline is the point: if you can't write a clear rationale from the code alone, you shouldn't have kept the finding."""
 
 ARBITER_TOOL = {
     "name": "report_triaged_findings",
