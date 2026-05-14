@@ -158,11 +158,11 @@
 <body>
 
 <h1>pr-arbiter</h1>
-<p class="subtitle">A reviewer + arbiter multi-agent system for code review. Phase 1 POC.</p>
+<p class="subtitle">Multi-agent dynamics for code review (Phase 1) and code generation (Phase 2).</p>
 
 <div class="headline">
   <div class="headline-number">7&thinsp;/&thinsp;8</div>
-  <div class="headline-label">critical bugs caught — multi-agent vs 6/8 single-agent</div>
+  <div class="headline-label">critical bugs caught — multi-agent vs 6/8 single-agent (Phase 1)</div>
   <p style="margin-top: .8rem; margin-bottom: 0;">
     The multi-agent pipeline (reviewer + independent arbiter + mutual triage)
     catches a critical security bug — regex-based HTML sanitization on
@@ -170,6 +170,21 @@
     misses across every prompt variant tried. Comparable precision, fewer
     false positives, two-tier output (blocking + advisory) that matches how
     senior reviewers actually work.
+  </p>
+</div>
+
+<div class="headline" style="border-left-color: #c47a00;">
+  <div class="headline-number" style="color: #c47a00;">same pattern, different surface</div>
+  <div class="headline-label">phase 2 — code generation from spec (writer-loop)</div>
+  <p style="margin-top: .8rem; margin-bottom: 0;">
+    Phase 2 ports the reviewer + arbiter architecture from PR review to a
+    writer-loop: a writer agent produces code, reviewer + arbiter critique,
+    writer revises. Across 13 tasks (197 tests), both arms converge at the
+    same rate (<strong>11/13</strong>), but the failure mix shifts:
+    multi-agent <strong>fixes</strong> a stuck correctness bug
+    (<span class="mono">task_007</span>) and <strong>regresses</strong> on
+    an underspec ambiguity (<span class="mono">task_013</span>). Same
+    tradeoff as Phase 1: helps with correctness, hurts on ambiguity.
   </p>
 </div>
 
@@ -334,6 +349,112 @@
   <a href="../results/pr_009_worked_example.md">results/pr_009_worked_example.md</a>.
 </p>
 
+<h2>Phase 2 — writer-loop (code generation from spec)</h2>
+
+<p>
+  Phase 2 tests whether the Phase 1 reviewer + arbiter architecture generalizes
+  to a <strong>writer-loop</strong>: a writer agent produces code from a spec;
+  reviewer + arbiter critique the attempt; writer revises; loop until tests
+  pass or budget runs out. Corpus is 13 deterministic tasks (197 tests) across
+  four difficulty tiers — easy, medium, hard, and a deliberately
+  <em>underspec</em> tier where the spec is ambiguous and the tests pick a
+  specific interpretation.
+</p>
+
+<p>
+  Critical design choices, locked before the API spend:
+</p>
+<ul>
+  <li><strong>Writer never sees the tests.</strong> Spec only. Showing tests would collapse the task to "fit-the-tests" and erase the multi-agent surface.</li>
+  <li><strong>Writer never sees test failures.</strong> Only a binary <span class="mono">5/17 passing</span>-style signal. Tracebacks would leak ground truth.</li>
+  <li><strong>Reviewer sees attempt history.</strong> Catches regression / oscillation. <strong>Arbiter sees latest only</strong> — preserves the anti-anchoring independence property from Phase 1.</li>
+  <li><strong>Budget = 3 iterations.</strong> 1-iter convergence is one-shot (no multi-agent value). Past 5 is stuck.</li>
+  <li>Same model (Sonnet 4.6) for all agents — the ablation argument is preserved.</li>
+</ul>
+
+<h3>Results — both arms tie on aggregate</h3>
+
+<table>
+  <thead>
+    <tr><th>configuration</th><th>pass rate</th><th>test recall</th><th>avg iter</th><th>wall</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>writer-alone (ablation)</td><td class="num">11/13 (84.6%)</td><td class="num">193/197 (98.0%)</td><td class="num">1.46</td><td class="num">413s</td></tr>
+    <tr><td>writer + reviewer + arbiter</td><td class="num">11/13 (84.6%)</td><td class="num">192/197 (97.5%)</td><td class="num">1.46</td><td class="num">615s</td></tr>
+  </tbody>
+</table>
+
+<p style="font-size: .85rem; color: #666;">
+  Same convergence rate; multi-agent costs ~1.5× wall and ~3× API calls. The
+  aggregate tie is real, but hides a shift in the <em>failure mix</em>.
+</p>
+
+<h3>By difficulty — swap, not a wash</h3>
+
+<table>
+  <thead>
+    <tr><th>difficulty</th><th>n</th><th>writer-alone</th><th>multi-agent</th><th>delta</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>easy</td><td class="num">4</td><td class="num">4/4</td><td class="num">4/4</td><td class="num">—</td></tr>
+    <tr class="highlight"><td>medium</td><td class="num">4</td><td class="num">3/4</td><td class="num winner">4/4</td><td class="num winner">+1 (task_007 fixed)</td></tr>
+    <tr><td>hard</td><td class="num">3</td><td class="num">3/3</td><td class="num">3/3</td><td class="num">—</td></tr>
+    <tr class="highlight"><td>underspec</td><td class="num">2</td><td class="num">1/2</td><td class="num" style="color:#a33">0/2</td><td class="num" style="color:#a33">−1 (task_013 broken)</td></tr>
+  </tbody>
+</table>
+
+<h3>Worked examples — where the signal lives</h3>
+
+<h4 style="color: #2a5cdb; margin-top: 1rem;">task_007 — multi-agent WIN</h4>
+<p style="margin-top: .3rem;">
+  JSON path resolver (medium). Writer's first attempt had multiple
+  correctness bugs: bracket parsing, mutable sentinel default,
+  dot-handling on edge cases, swallowed exceptions.
+</p>
+<ul>
+  <li><strong>writer-alone:</strong> 15/17 → 16/17 → 16/17. <em>Stuck</em> across 3 iterations. Binary signal said "wrong" but not where.</li>
+  <li><strong>multi-agent:</strong> iter1 timed out (infinite loop). Reviewer + arbiter together produced <strong>10 specific findings</strong> — bracket parser, sentinel default, dot-handling, swallowed exceptions. iter2: <strong>17/17</strong>.</li>
+</ul>
+<p>
+  Direct analog of the Phase 1 <span class="mono">pr_009</span> result:
+  multi-agent provides the diagnostic detail the binary signal can't.
+</p>
+
+<h4 style="color: #a33; margin-top: 1rem;">task_013 — multi-agent LOSS</h4>
+<p style="margin-top: .3rem;">
+  Whitespace normalizer (underspec). Spec is ambiguous on whether spaces
+  adjacent to newlines should be stripped or preserved.
+</p>
+<ul>
+  <li><strong>writer-alone:</strong> 16/17 → 12/17 → 17/17. Oscillated, recovered.</li>
+  <li><strong>multi-agent:</strong> 11/17 → 16/17 → 13/17. Arbiter confidently asserted "spaces adjacent to newlines should be stripped." Writer obeyed. Tests required preserving them.</li>
+</ul>
+<p>
+  Critic certainty on an ambiguous spec pushes the writer in the wrong
+  direction. Mirror of the Phase 1 iter1 arbiter overshoot — same failure
+  mode, different surface.
+</p>
+
+<h3>What this means</h3>
+
+<p>
+  Two phases, two corpora, two surfaces (review vs write), <strong>same
+  architectural finding</strong>:
+</p>
+<ul>
+  <li>Independent multi-agent review <strong>beats</strong> single-agent on correctness bugs the latter can't catch alone.</li>
+  <li>Independent multi-agent review <strong>loses</strong> to single-agent on ambiguity where the critic introduces false certainty.</li>
+  <li>The tradeoff is <strong>real, not a Phase 1 artifact.</strong></li>
+</ul>
+
+<p>
+  Phase 2 has <strong>no mutual-triage analog yet</strong>. The Phase 1 fix
+  for overshoot (two voices voting KEEP/DROP) doesn't map cleanly — feedback
+  flows to the writer as a stream, not a discrete list. Whether some analog
+  (e.g. critic confidence tagging, dual-voice gating of spec-interpretation
+  feedback) closes the underspec gap is the load-bearing question for iter 2.
+</p>
+
 <h2>Methodology notes</h2>
 <ul>
   <li><strong>Eval-first.</strong> No prompt change without rerunning the full 20-PR corpus.</li>
@@ -344,7 +465,15 @@
 
 <h2>Further reading</h2>
 <div class="links">
-  <p><a href="../SUMMARY.md">SUMMARY.md</a> — full project writeup (~1500 words)</p>
+  <p><strong>Phase 2</strong></p>
+  <p><a href="../PHASE_2_SUMMARY.md">PHASE_2_SUMMARY.md</a> — full Phase 2 writeup</p>
+  <p><a href="../results/phase2/iter1_notes.md">results/phase2/iter1_notes.md</a> — iter 1 deep dive, full trajectories on the task_007 win and task_013 loss</p>
+  <p><a href="../phase2_corpus/README.md">phase2_corpus/README.md</a> — task selection and corpus structure</p>
+  <p><a href="../docs/PHASE_2_HANDOFF.md">PHASE_2_HANDOFF.md</a> — original design doc (what we agreed before building)</p>
+  <p><a href="../results/phase2/writer-alone_summary.json">writer-alone_summary.json</a> — ablation arm aggregates</p>
+  <p><a href="../results/phase2/writer_reviewer_arbiter_summary.json">writer_reviewer_arbiter_summary.json</a> — multi-agent arm aggregates</p>
+  <p style="margin-top:1rem;"><strong>Phase 1</strong></p>
+  <p><a href="../SUMMARY.md">SUMMARY.md</a> — full Phase 1 writeup (~1500 words)</p>
   <p><a href="../README.md">README.md</a> — repo overview, how to run</p>
   <p><a href="../results/baseline_notes.md">baseline_notes.md</a> — iter0 baseline run</p>
   <p><a href="../results/iter1_notes.md">iter1_notes.md</a> — severity anchoring + default-drop arbiter</p>
@@ -356,7 +485,8 @@
 </div>
 
 <footer>
-  Phase 1 of a multi-agent SDLC POC. Built on Anthropic's Claude (Sonnet 4.6).
+  Multi-agent SDLC POC — Phase 1 (PR review) and Phase 2 (writer-loop code generation).
+  Built on Anthropic's Claude (Sonnet 4.6).
   Source: <a href="https://github.com/lciacci/pr-arbiter">github.com/lciacci/pr-arbiter</a>.
 </footer>
 
