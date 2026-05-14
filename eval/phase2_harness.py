@@ -130,25 +130,66 @@ def summarize(runs: list[TaskRun], manifest: dict) -> dict:
     }
 
 
-def main(mode: str, budget: int = 3, task_filter: list[str] | None = None) -> None:
-    load_dotenv(find_dotenv(), override=True)
-
-    reviewer_fn = None
-    arbiter_fn = None
-    if mode == "writer+reviewer+arbiter":
+# Arm mapping for Phase 2 iter2. Each arm picks reviewer/arbiter modules and
+# an optional writer extra_system. The mode string passed into TaskRun is
+# kept compatible with iter1 ("writer-alone" or "writer+reviewer+arbiter")
+# so the writer_loop driver doesn't need an arm concept.
+def _arm_config(arm: str) -> dict:
+    if arm == "A" or arm == "writer-alone":
+        return {
+            "mode": "writer-alone",
+            "reviewer_fn": None,
+            "arbiter_fn": None,
+            "writer_extra_system": "",
+            "label": "A_writer_alone",
+        }
+    if arm == "B" or arm == "writer+reviewer+arbiter":
         from agents.writer_arbiter import arbitrate
         from agents.writer_reviewer import review
-        reviewer_fn = review
-        arbiter_fn = arbitrate
-    elif mode != "writer-alone":
-        raise ValueError(f"unknown mode: {mode}")
+        return {
+            "mode": "writer+reviewer+arbiter",
+            "reviewer_fn": review,
+            "arbiter_fn": arbitrate,
+            "writer_extra_system": "",
+            "label": "B_writer_reviewer_arbiter",
+        }
+    if arm == "C" or arm == "writer+reviewer+arbiter+typed":
+        from agents.writer import ARM_C_TYPED_FINDINGS_GUIDANCE
+        from agents.writer_arbiter_typed import arbitrate
+        from agents.writer_reviewer_typed import review
+        return {
+            "mode": "writer+reviewer+arbiter",
+            "reviewer_fn": review,
+            "arbiter_fn": arbitrate,
+            "writer_extra_system": ARM_C_TYPED_FINDINGS_GUIDANCE,
+            "label": "C_writer_reviewer_arbiter_typed",
+        }
+    raise ValueError(f"unknown arm: {arm!r}")
+
+
+def main(
+    arm: str,
+    seed: int = 1,
+    budget: int = 3,
+    task_filter: list[str] | None = None,
+    out_root: Path | None = None,
+) -> None:
+    load_dotenv(find_dotenv(), override=True)
+
+    cfg = _arm_config(arm)
+    mode = cfg["mode"]
+    reviewer_fn = cfg["reviewer_fn"]
+    arbiter_fn = cfg["arbiter_fn"]
+    writer_extra_system = cfg["writer_extra_system"]
+    arm_label = cfg["label"]
 
     manifest = load_manifest()
     tasks = [t["id"] for t in manifest["tasks"]]
     if task_filter:
         tasks = [t for t in tasks if t in task_filter]
 
-    out_dir = RESULTS_DIR / mode.replace("+", "_")
+    out_root = out_root or (RESULTS_DIR / "iter2")
+    out_dir = out_root / arm_label / f"seed{seed}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     runs: list[TaskRun] = []
@@ -163,9 +204,9 @@ def main(mode: str, budget: int = 3, task_filter: list[str] | None = None) -> No
                 budget=budget,
                 reviewer_fn=reviewer_fn,
                 arbiter_fn=arbiter_fn,
+                writer_extra_system=writer_extra_system,
             )
         except Exception as e:
-            # Surface but don't abort; per-task isolation.
             print(f"    EXCEPTION: {type(e).__name__}: {e}", flush=True)
             run = TaskRun(
                 task_id=task_id,
@@ -187,13 +228,15 @@ def main(mode: str, budget: int = 3, task_filter: list[str] | None = None) -> No
         )
 
     summary = summarize(runs, manifest)
+    summary["arm"] = arm_label
     summary["mode"] = mode
+    summary["seed"] = seed
     summary["budget"] = budget
     summary["wall_seconds"] = time.time() - t0
-    (RESULTS_DIR / f"{mode.replace('+', '_')}_summary.json").write_text(json.dumps(summary, indent=2))
+    (out_dir.parent / f"seed{seed}_summary.json").write_text(json.dumps(summary, indent=2))
 
     print("\n=== SUMMARY ===")
-    print(f"  mode: {mode}")
+    print(f"  arm: {arm_label}  seed: {seed}")
     print(f"  pass rate: {summary['overall']['converged']}/{summary['overall']['tasks']} "
           f"({summary['overall']['pass_rate']*100:.1f}%)")
     print(f"  test recall: {summary['overall']['total_passed']}/{summary['overall']['total_tests']} "
@@ -209,10 +252,22 @@ def main(mode: str, budget: int = 3, task_filter: list[str] | None = None) -> No
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("usage: python eval/phase2_harness.py <mode> [budget] [task_id ...]")
-        print("modes: writer-alone | writer+reviewer+arbiter")
+        print("usage: python eval/phase2_harness.py <arm> [--seed N] [budget] [task_id ...]")
+        print("arms: A | B | C  (or legacy: writer-alone | writer+reviewer+arbiter | writer+reviewer+arbiter+typed)")
         sys.exit(1)
-    mode = sys.argv[1]
-    budget = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 3
-    filter_tasks = [a for a in sys.argv[3:] if not a.isdigit()]
-    main(mode, budget=budget, task_filter=filter_tasks or None)
+    args = sys.argv[1:]
+    arm = args.pop(0)
+    seed = 1
+    if "--seed" in args:
+        i = args.index("--seed")
+        seed = int(args[i + 1])
+        del args[i : i + 2]
+    budget = 3
+    remaining = []
+    for a in args:
+        if a.isdigit() and budget == 3:
+            budget = int(a)
+        else:
+            remaining.append(a)
+    filter_tasks = remaining or None
+    main(arm, seed=seed, budget=budget, task_filter=filter_tasks)
