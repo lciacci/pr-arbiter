@@ -81,7 +81,7 @@ Matching is approximate (file + category match, line within ±3). Exact line mat
 - [x] Baseline eval run (see `results/baseline_notes.md`)
 - [x] Iter1 eval run (see `results/iter1_notes.md`) — headline: reviewer-alone wins
 - [x] Iter2: independent-arbiter architecture (see `results/iter2_notes.md`) — headline: catches a critical the reviewer missed, at precision cost
-- [ ] Iter3: precision-recovery pass over merged findings
+- [x] Iter3: mutual-triage adversarial assessment (see `results/iter3_notes.md`) — headline: blocking-tier 7/8 critical recall at 58.5% precision; architecture vindicated
 
 ## Running the eval
 
