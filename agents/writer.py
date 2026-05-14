@@ -100,7 +100,20 @@ def write(spec: str, history: list[Attempt] | None = None, task_id: str = "") ->
             code = block.input.get("code", "")
             reasoning = block.input.get("reasoning", "")
             return WriterOutput(code=code, reasoning=reasoning)
-    return WriterOutput(code="", reasoning="agent did not call submit_solution")
+    # No tool_use block — agent refused, hit max_tokens before tool call, or
+    # returned only text. Surface this rather than masking it as an empty
+    # solution; the loop driver decides whether to treat it as a failed
+    # attempt or abort the task.
+    stop_reason = getattr(resp, "stop_reason", "unknown")
+    text_preview = ""
+    for block in resp.content:
+        if getattr(block, "type", None) == "text":
+            text_preview = (getattr(block, "text", "") or "")[:200]
+            break
+    return WriterOutput(
+        code="",
+        reasoning=f"agent did not call submit_solution (stop_reason={stop_reason}, text={text_preview!r})",
+    )
 
 
 def _format_user_message(spec: str, history: list[Attempt]) -> str:

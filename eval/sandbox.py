@@ -10,6 +10,7 @@ pass-count signal is fed back into the writer loop.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -33,14 +34,26 @@ class TestResult:
     crashed: bool = False
 
 
+_TASK_ID_RE = re.compile(r"^task_\d{3,}$")
+
+
 def run_tests(task_id: str, code: str, timeout_s: int = 30) -> TestResult:
     """Run a task's tests against a candidate solution.
 
-    :param task_id: directory under phase2_corpus/, e.g. "task_001".
-    :param code: full contents of the candidate solution.py.
+    :param task_id: directory under phase2_corpus/, e.g. "task_001". Must
+        match `task_\\d{3,}` — no path separators, no traversal. Anything
+        else raises ValueError before any filesystem access.
+    :param code: full contents of the candidate solution.py. This file is
+        executed by pytest inside a tmpdir with a wall-clock timeout — that
+        is the only sandboxing. Callers are responsible for ensuring `code`
+        does not need to be isolated from the host (no network egress
+        block, no FS jail). The expected caller is the writer-loop
+        evaluating its own model output.
     :param timeout_s: wall-clock cap. Some tasks (rate limiter) sleep briefly.
     :returns: TestResult with pass/fail counts and raw output.
     """
+    if not _TASK_ID_RE.match(task_id):
+        raise ValueError(f"invalid task_id: {task_id!r}")
     task_dir = CORPUS_DIR / task_id
     if not task_dir.is_dir():
         raise FileNotFoundError(f"unknown task: {task_id}")

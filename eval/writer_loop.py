@@ -63,7 +63,21 @@ def run_task(
     results: list[TestResult] = []
 
     for it in range(1, budget + 1):
-        out = write(spec, history=history, task_id=task_id)
+        try:
+            out = write(spec, history=history, task_id=task_id)
+        except Exception as e:
+            return TaskRun(
+                task_id=task_id,
+                mode=mode,
+                converged=False,
+                iterations=it,
+                final_passed=0,
+                final_total=0,
+                final_crashed=True,
+                history=history,
+                test_results=results,
+                error=f"writer call failed: {type(e).__name__}: {e}",
+            )
         if not out.code:
             return TaskRun(
                 task_id=task_id,
@@ -75,7 +89,7 @@ def run_task(
                 final_crashed=True,
                 history=history,
                 test_results=results,
-                error="writer returned empty code",
+                error=f"writer returned empty code: {out.reasoning}",
             )
 
         result = run_tests(task_id, out.code)
