@@ -1,0 +1,43 @@
+{
+  "corpus_version": "0.1.0",
+  "phase": 2,
+  "total_tasks": 13,
+  "total_tests": 197,
+  "summary": {
+    "by_difficulty": {
+      "easy": 4,
+      "medium": 4,
+      "hard": 3,
+      "underspec": 2
+    },
+    "by_style": {
+      "hand-authored": 9,
+      "humaneval-shaped": 4
+    }
+  },
+  "harness_notes": [
+    "Each task directory contains: spec.md, tests.py, solution.py.",
+    "solution.py is the REFERENCE solution used to verify the test set is internally consistent. The Phase 2 harness MUST NOT expose solution.py to the writer agent — it is ground truth, not input.",
+    "Writers see spec.md. Whether they also see tests.py is a design question (see SESSION 2 kickoff): showing tests = easier task, hiding tests = pure spec interpretation. Underspec tasks specifically require hiding the tests, otherwise the writer just reads off the answer.",
+    "tests.py imports `from solution import ...`. The harness should write the writer's attempt to solution.py in a sandboxed directory before running pytest."
+  ],
+  "tasks": [
+    {"id": "task_001", "difficulty": "easy",      "style": "humaneval-shaped", "topic": "Query string parser",        "tests": 13},
+    {"id": "task_002", "difficulty": "easy",      "style": "hand-authored",    "topic": "Roman numeral converter",    "tests": 15},
+    {"id": "task_003", "difficulty": "easy",      "style": "hand-authored",    "topic": "Path normalizer",            "tests": 14},
+    {"id": "task_004", "difficulty": "easy",      "style": "humaneval-shaped", "topic": "List flatten with depth",    "tests": 14},
+    {"id": "task_005", "difficulty": "medium",    "style": "hand-authored",    "topic": "LRU cache with TTL",         "tests": 17},
+    {"id": "task_006", "difficulty": "medium",    "style": "hand-authored",    "topic": "Token bucket rate limiter",  "tests": 15},
+    {"id": "task_007", "difficulty": "medium",    "style": "humaneval-shaped", "topic": "JSON path resolver",         "tests": 17},
+    {"id": "task_008", "difficulty": "medium",    "style": "humaneval-shaped", "topic": "Merge intervals",            "tests": 14},
+    {"id": "task_009", "difficulty": "hard",      "style": "hand-authored",    "topic": "Bounded-time scheduler",     "tests": 16},
+    {"id": "task_010", "difficulty": "hard",      "style": "hand-authored",    "topic": "Filter expression DSL",      "tests": 20},
+    {"id": "task_011", "difficulty": "hard",      "style": "hand-authored",    "topic": "Topological sort",           "tests": 14},
+    {"id": "task_012", "difficulty": "underspec", "style": "hand-authored",    "topic": "Date string parser",         "tests": 11},
+    {"id": "task_013", "difficulty": "underspec", "style": "hand-authored",    "topic": "Whitespace normalizer",      "tests": 17}
+  ],
+  "humaneval_check_required": [
+    "task_001", "task_004", "task_007", "task_008"
+  ],
+  "humaneval_check_notes": "These 4 tasks use HumanEval-shaped patterns. Before running Phase 2 evals, sanity-check that Sonnet 4.6 does NOT one-shot the full test set on these. If it does, modify spec or add edge cases. The 9 hand-authored tasks are less likely to be in training data but verify spot-checks anyway. Underspec tasks (012, 013) inherently can't be one-shotted because the spec is incomplete — but they should still be checked that the agent doesn't pattern-match to a well-known format set."
+}
