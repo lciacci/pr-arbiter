@@ -39,8 +39,9 @@ one-page visual overview of both phases.
 **Phase 2 (most recent):**
 - [PHASE_2_SUMMARY.md](PHASE_2_SUMMARY.md) — Phase 2 writeup, design choices, results, worked examples.
 - [results/phase2/iter1_notes.md](results/phase2/iter1_notes.md) — iter 1 deep dive, full trajectories for `task_007` (win) and `task_013` (loss).
+- [docs/PHASE_2_ITER2_HANDOFF.md](docs/PHASE_2_ITER2_HANDOFF.md) — iter 2 implementation brief (three-arm variance + finding-type schema). Drop into a fresh session to kick off.
 - [phase2_corpus/README.md](phase2_corpus/README.md) — corpus structure and task selection rationale.
-- [docs/PHASE_2_HANDOFF.md](docs/PHASE_2_HANDOFF.md) — original design doc (what we agreed before building).
+- [docs/PHASE_2_HANDOFF.md](docs/PHASE_2_HANDOFF.md) — original Phase 2 design doc.
 
 **Phase 1:**
 - [SUMMARY.md](SUMMARY.md) — project writeup, all iterations, methodology.
