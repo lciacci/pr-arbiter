@@ -1,32 +1,52 @@
 # pr-arbiter
 
-A reviewer + arbiter multi-agent system for code review. Phase 1 of a
-multi-agent software development POC.
+Multi-agent dynamics for code review (Phase 1) and code generation
+(Phase 2). A POC measuring whether reviewer + independent arbiter
+architecture beats a single-agent baseline on two different surfaces.
 
-**Headline result:** the multi-agent system (reviewer + independent arbiter
-+ mutual triage) catches a critical security bug (regex-based HTML
-sanitization on pr_009) that the best single-agent reviewer misses across
-every prompt variant tried. Same comparable precision, fewer false
-positives, two-tier output (blocking + advisory) that matches how senior
-reviewers actually work.
+**Phase 1 headline:** the multi-agent system (reviewer + independent
+arbiter + mutual triage) catches a critical security bug (regex-based
+HTML sanitization on `pr_009`) that the best single-agent reviewer
+misses across every prompt variant tried. Comparable precision, fewer
+false positives, two-tier output (blocking + advisory).
 
 | configuration                              | recall | precision | FP | critical recall | neg-ctrl |
 |--------------------------------------------|-------:|----------:|---:|----------------:|---------:|
 | best single-agent (v2 reviewer-alone)      |  52.7% |     60.4% | 19 |   6/8 (75%)     |   1/3    |
 | **multi-agent blocking-tier (iter3)**      |  43.6% | **58.5%** | **17** | **7/8 (88%)** | **1/3**  |
 
-See [SUMMARY.md](SUMMARY.md) for the full project writeup, or
-[docs/index.html](docs/index.html) for a one-page visual overview.
+**Phase 2 headline:** the same architecture, ported to a writer-loop
+(writer + reviewer + arbiter on code-from-spec), ties on aggregate
+(11/13 each) but swaps a medium-difficulty win for an underspec loss.
+Multi-agent fixes a stuck correctness bug on `task_007`; multi-agent
+arbiter pushes the writer in the wrong direction on `task_013`.
+**Same tradeoff as Phase 1: helps with correctness, hurts on
+ambiguity.** Architectural finding holds across both surfaces.
+
+| mode (Phase 2)              | pass rate | test recall | avg iter | wall |
+|-----------------------------|----------:|------------:|---------:|-----:|
+| writer-alone (ablation)     | 11/13 (84.6%) | 193/197 (98.0%) | 1.46 | 413s |
+| writer + reviewer + arbiter | 11/13 (84.6%) | 192/197 (97.5%) | 1.46 | 615s |
+
+See [SUMMARY.md](SUMMARY.md) and [PHASE_2_SUMMARY.md](PHASE_2_SUMMARY.md)
+for the full writeups, or [docs/index.html](docs/index.html) for a
+one-page visual overview of both phases.
 
 ## Quick links
 
+- [docs/index.html](docs/index.html) — visual one-pager covering both phases (open in a browser).
+
+**Phase 2 (most recent):**
+- [PHASE_2_SUMMARY.md](PHASE_2_SUMMARY.md) — Phase 2 writeup, design choices, results, worked examples.
+- [results/phase2/iter1_notes.md](results/phase2/iter1_notes.md) — iter 1 deep dive, full trajectories for `task_007` (win) and `task_013` (loss).
+- [phase2_corpus/README.md](phase2_corpus/README.md) — corpus structure and task selection rationale.
+- [docs/PHASE_2_HANDOFF.md](docs/PHASE_2_HANDOFF.md) — original design doc (what we agreed before building).
+
+**Phase 1:**
 - [SUMMARY.md](SUMMARY.md) — project writeup, all iterations, methodology.
-- [docs/index.html](docs/index.html) — visual one-pager (open in a browser).
-- [results/pr_009_worked_example.md](results/pr_009_worked_example.md) —
-  step-by-step on the critical catch.
+- [results/pr_009_worked_example.md](results/pr_009_worked_example.md) — step-by-step on the critical catch.
 - [results/iter3_notes.md](results/iter3_notes.md) — most recent iteration.
-- [results/iter4_corpus_discovery.md](results/iter4_corpus_discovery.md) —
-  the agent caught a real bug the rubric mislabeled.
+- [results/iter4_corpus_discovery.md](results/iter4_corpus_discovery.md) — the agent caught a real bug the rubric mislabeled.
 
 ## What this is
 
@@ -61,28 +81,51 @@ is documented in `results/*_notes.md`.
 ## Repo layout
 
 ```
-agents/             # reviewer.py, arbiter.py, triage.py
-corpus/             # 20 PRs with rubrics + Flask 3.0.0 source
+agents/
+  reviewer.py            # Phase 1 PR reviewer
+  arbiter.py             # Phase 1 independent arbiter
+  triage.py              # Phase 1 mutual-triage voices
+  writer.py              # Phase 2 writer agent
+  writer_reviewer.py     # Phase 2 reviewer (code-attempt vs spec)
+  writer_arbiter.py      # Phase 2 arbiter (latest-attempt independent pass)
+corpus/                  # 20 PRs with rubrics + Flask 3.0.0 source (Phase 1)
+phase2_corpus/           # 13 tasks with deterministic tests (Phase 2)
 eval/
-  harness.py        # load_agent_input, load_rubric, score_pr, summarize
-  run_baseline.py   # reviewer-only or reviewer+arbiter pipeline
-  run_triage.py     # iter3 mutual-triage runner
-  show_results.py   # dashboard of all iterations side-by-side
+  harness.py             # Phase 1: load_agent_input, load_rubric, score_pr
+  run_baseline.py        # Phase 1: reviewer-only or reviewer+arbiter pipeline
+  run_triage.py          # Phase 1: iter3 mutual-triage runner
+  show_results.py        # Phase 1: side-by-side dashboard
+  sandbox.py             # Phase 2: tmpdir + pytest subprocess + pass-count parse
+  writer_loop.py         # Phase 2: per-task loop driver
+  phase2_harness.py      # Phase 2: corpus runner + summarize
 docs/
-  index.html        # visual one-page summary
-  PERSONAS.md       # corpus authoring reference (NEVER read by agents)
-results/            # eval outputs + per-iteration notes
+  index.html             # visual one-page summary (both phases)
+  PERSONAS.md            # Phase 1 corpus authoring reference (NEVER read by agents)
+  PHASE_2_HANDOFF.md     # Phase 2 design doc
+results/
+  baseline_notes.md ... iter4_corpus_discovery.md  # Phase 1 iterations
+  pr_009_worked_example.md                          # Phase 1 critical catch
+  phase2/
+    writer-alone/                                   # Phase 2 per-task JSON (ablation)
+    writer_reviewer_arbiter/                        # Phase 2 per-task JSON (multi-agent)
+    *_summary.json                                  # Phase 2 aggregates
+    iter1_notes.md                                  # Phase 2 iter 1 deep dive
 ```
 
 ## Running it
 
-Requires Python 3.9+ and an `ANTHROPIC_API_KEY` set in `.env` at repo root.
+Requires Python 3.13+ (for PEP 604 `X | None` syntax in Phase 2
+solutions) and an `ANTHROPIC_API_KEY` set in `.env` at repo root.
 
 ```bash
 # Set up (once)
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+python3.13 -m venv .venv
+.venv/bin/pip install -r requirements.txt pytest pytest-json-report
+```
 
+### Phase 1 (PR review)
+
+```bash
 # Run reviewer-alone over all 20 PRs (~3 min)
 .venv/bin/python eval/run_baseline.py
 
@@ -92,8 +135,21 @@ python3 -m venv .venv
 # Run iter3 mutual triage over a prior iter2 output (~3 min)
 .venv/bin/python eval/run_triage.py --source results/iter2_20260513.json
 
-# View all configurations side-by-side
+# View all Phase 1 configurations side-by-side
 .venv/bin/python eval/show_results.py
+```
+
+### Phase 2 (writer-loop)
+
+```bash
+# Ablation arm: writer + binary pass-count signal only (~7 min)
+.venv/bin/python eval/phase2_harness.py writer-alone 3
+
+# Multi-agent arm: writer + reviewer + arbiter (~10 min)
+.venv/bin/python eval/phase2_harness.py writer+reviewer+arbiter 3
+
+# Single-task quick test
+.venv/bin/python eval/writer_loop.py task_007 writer+reviewer+arbiter 3
 ```
 
 ## Eval design
@@ -131,13 +187,16 @@ Personas are authoring tools. **Agents never see persona info.** See
 
 ## Status
 
-Phase 1 architecture and methodology are complete (4 iterations + corpus
-discovery). Five candidate Phase 1 polish moves are listed in
-`results/iter3_notes.md`; none are architectural.
+**Phase 1 (PR review):** complete. 4 iterations + corpus discovery.
+Five candidate polish moves listed in `results/iter3_notes.md`; none
+are architectural.
 
-Phase 2 (writer-loop or spec → arch → impl) is the next research target.
-Will require a new corpus, but test-based eval makes that lighter than the
-Phase 1 rubric authoring.
+**Phase 2 (writer-loop):** iter 1 complete. Corpus (13 tasks, 197
+tests), sandbox, writer + reviewer + arbiter agents, ablation arm
+all built and run. Headline finding: Phase 1 architectural tradeoff
+generalizes to code generation. Three candidate iter 2 directions
+listed in `results/phase2/iter1_notes.md` (confidence tagging in
+reviewer tool schema, variance run, mutual-triage analog).
 
 ## Ground rules (preserved from kickoff)
 
