@@ -82,6 +82,7 @@ Matching is approximate (file + category match, line within ±3). Exact line mat
 - [x] Iter1 eval run (see `results/iter1_notes.md`) — headline: reviewer-alone wins
 - [x] Iter2: independent-arbiter architecture (see `results/iter2_notes.md`) — headline: catches a critical the reviewer missed, at precision cost
 - [x] Iter3: mutual-triage adversarial assessment (see `results/iter3_notes.md`) — headline: blocking-tier 7/8 critical recall at 58.5% precision; architecture vindicated
+- [x] Iter4: corpus discovery — pr_007's "persistent hallucination" is a real mislabel (see `results/iter4_corpus_discovery.md`); pending corpus correction approval
 
 ## Running the eval
 
