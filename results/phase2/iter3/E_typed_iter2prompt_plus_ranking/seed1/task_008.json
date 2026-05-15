@@ -1,0 +1,32 @@
+{
+  "task_id": "task_008",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 14,
+  "final_total": 14,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "def merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    \"\"\"\n    Merge overlapping intervals and return sorted list of non-overlapping intervals.\n    \n    Two closed intervals overlap if they share any point (including touching endpoints).\n    Raises ValueError if any interval has start > end.\n    \"\"\"\n    if not intervals:\n        return []\n    \n    # Validate all intervals\n    for start, end in intervals:\n        if start > end:\n            raise ValueError(f\"Invalid interval ({start}, {end}): start must be <= end\")\n    \n    # Sort by start\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    \n    merged = [sorted_intervals[0]]\n    \n    for current_start, current_end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        # Intervals overlap (or touch) if current_start <= last_end\n        if current_start <= last_end:\n            # Merge: extend the last interval if needed\n            merged[-1] = (last_start, max(last_end, current_end))\n        else:\n            merged.append((current_start, current_end))\n    \n    return merged\n",
+      "reasoning": "The spec is clear. I implement merge_intervals that: validates intervals (raises ValueError for start > end), sorts by start, then iterates merging overlapping or touching intervals (closed intervals share a point when current_start <= last_end). Returns list of tuples sorted by start.",
+      "test_signal": "14 / 14 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": null
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 14,
+      "failed": 0,
+      "errors": 0,
+      "total": 14,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

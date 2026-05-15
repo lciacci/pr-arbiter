@@ -1,0 +1,32 @@
+{
+  "task_id": "task_001",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 13,
+  "final_total": 13,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "def parse_query_string(qs: str) -> dict[str, list[str]]:\n    \"\"\"\n    Parse a URL query string into a dict mapping each key to a list of its values.\n    \n    Handles percent-encoding, + as space, multiple values per key, empty values,\n    keys without =, and stray & characters.\n    \"\"\"\n    if not qs:\n        return {}\n    \n    from urllib.parse import unquote_plus\n    \n    result: dict[str, list[str]] = {}\n    \n    # Split on & and filter out empty strings (handles stray &)\n    pairs = [p for p in qs.split('&') if p]\n    \n    for pair in pairs:\n        if '=' in pair:\n            key, _, value = pair.partition('=')\n        else:\n            key = pair\n            value = ''\n        \n        # Decode percent-encoding and + as space\n        key = unquote_plus(key)\n        value = unquote_plus(value)\n        \n        if key not in result:\n            result[key] = []\n        result[key].append(value)\n    \n    return result\n",
+      "reasoning": "The spec is clear and complete. I'll implement parse_query_string using urllib.parse.unquote_plus for decoding (which handles both % encoding and + as space). I split on & filtering empty strings for stray & handling, partition on = for key/value splitting, and collect values into lists in order of appearance.",
+      "test_signal": "13 / 13 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": null
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 13,
+      "failed": 0,
+      "errors": 0,
+      "total": 13,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

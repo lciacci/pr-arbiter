@@ -1,0 +1,32 @@
+{
+  "task_id": "task_011",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 14,
+  "final_total": 14,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 011 \u2014 Topological sort with cycle detection.\n\nImplementation notes:\n- Uses Kahn's algorithm (BFS-based) for topological sort with lexicographic tie-breaking.\n- Cycle detection: if not all nodes are processed after Kahn's algorithm, a cycle exists.\n- For cycle reporting, we use DFS to find an actual cycle among the unprocessed nodes.\n- Dangling successors are checked before processing.\n\"\"\"\n\nimport heapq\nfrom collections import defaultdict\n\n\ndef topological_sort(graph: dict[str, list[str]]) -> list[str]:\n    \"\"\"\n    Return a topological ordering of the nodes in `graph`.\n\n    Raises ValueError if:\n    - The graph contains a cycle (including self-loops).\n    - A successor node is not a key in the graph (dangling successor).\n    - Empty graph returns [].\n    \"\"\"\n    if not graph:\n        return []\n\n    # Check for dangling successors\n    for node, successors in graph.items():\n        for succ in successors:\n            if succ not in graph:\n                raise ValueError(\n                    f\"node '{succ}' is referenced as a successor but is not a key in the graph\"\n                )\n\n    # Compute in-degrees\n    in_degree = {node: 0 for node in graph}\n    for node, successors in graph.items():\n        for succ in successors:\n            in_degree[succ] += 1\n\n    # Kahn's algorithm with a min-heap for lexicographic ordering\n    # Initialize heap with all nodes that have in-degree 0\n    heap = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    result = []\n    while heap:\n        node = heapq.heappop(heap)\n        result.append(node)\n        for succ in sorted(graph[node]):  # sorted for determinism (heap handles ordering)\n            in_degree[succ] -= 1\n            if in_degree[succ] == 0:\n                heapq.heappush(heap, succ)\n\n    if len(result) != len(graph):\n        # There is a cycle \u2014 find it among nodes not yet processed\n        remaining = {node for node in graph if node not in set(result)}\n        cycle_nodes = _find_cycle(graph, remaining)\n        raise ValueError(f\"cycle detected involving: {', '.join(sorted(cycle_nodes))}\")\n\n    return result\n\n\ndef _find_cycle(graph: dict[str, list[str]], remaining: set) -> list[str]:\n    \"\"\"\n    Find nodes involved in a cycle within the subgraph induced by `remaining`.\n    Returns a list of node identifiers that form a cycle.\n    \"\"\"\n    # DFS-based cycle detection on the subgraph of remaining nodes\n    WHITE, GRAY, BLACK = 0, 1, 2\n    color = {node: WHITE for node in remaining}\n    cycle_nodes = []\n\n    def dfs(node, path):\n        nonlocal cycle_nodes\n        color[node] = GRAY\n        path.append(node)\n        for succ in graph[node]:\n            if succ not in remaining:\n                continue\n            if color[succ] == GRAY:\n                # Found a cycle \u2014 extract it from path\n                idx = path.index(succ)\n                cycle_nodes = path[idx:]\n                return True\n            if color[succ] == WHITE:\n                if dfs(succ, path):\n                    return True\n        path.pop()\n        color[node] = BLACK\n        return False\n\n    for node in sorted(remaining):\n        if color[node] == WHITE:\n            if dfs(node, []):\n                break\n\n    return cycle_nodes if cycle_nodes else list(remaining)\n",
+      "reasoning": "\nI'm implementing Kahn's algorithm (BFS-based topological sort) with a min-heap for lexicographic tie-breaking. Key design decisions:\n\n1. **Dangling successor check**: Before processing, verify all successors are keys in the graph.\n2. **Kahn's algorithm**: Uses a min-heap to always pick the lexicographically smallest node with in-degree 0, ensuring deterministic lexicographic ordering among valid topological orderings.\n3. **Cycle detection**: If Kahn's algorithm doesn't process all nodes, there must be a cycle. I then use DFS on the remaining nodes to find the actual cycle members.\n4. **Self-loop**: A self-loop creates a cycle since the node's in-degree is never reduced to 0, so Kahn's algorithm catches it naturally.\n5. **Empty graph**: Returns [] immediately.\n6. **Error messages**: Include \"cycle\" and list the nodes involved; mention missing node for dangling successors.\n",
+      "test_signal": "14 / 14 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": null
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 14,
+      "failed": 0,
+      "errors": 0,
+      "total": 14,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

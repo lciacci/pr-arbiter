@@ -1,0 +1,32 @@
+{
+  "task_id": "task_011",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 14,
+  "final_total": 14,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 011 \u2014 Topological sort with cycle detection\n\nImplementation notes:\n- Uses Kahn's algorithm (BFS-based) with a min-heap to enforce lexicographic\n  ordering when multiple nodes have in-degree zero simultaneously.\n- Cycle detection: if the output list has fewer nodes than the graph, a cycle\n  exists. We then identify the cycle nodes for the error message.\n- Dangling successor: checked upfront before the sort.\n\"\"\"\n\nimport heapq\nfrom collections import defaultdict\n\n\ndef topological_sort(graph: dict[str, list[str]]) -> list[str]:\n    \"\"\"Return a topological ordering of the nodes in `graph`.\n\n    Raises ValueError if the graph contains a cycle or a dangling successor.\n    Ties broken by lexicographic order of node id.\n    \"\"\"\n    if not graph:\n        return []\n\n    # 1. Validate: every successor must be a key in graph\n    for node, successors in graph.items():\n        for succ in successors:\n            if succ not in graph:\n                raise ValueError(\n                    f\"node '{succ}' is referenced as a successor but is not a key in the graph\"\n                )\n\n    # 2. Build in-degree map\n    in_degree: dict[str, int] = {node: 0 for node in graph}\n    for node, successors in graph.items():\n        for succ in successors:\n            in_degree[succ] += 1\n\n    # 3. Kahn's algorithm with a min-heap for lexicographic ordering\n    heap: list[str] = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    result: list[str] = []\n\n    while heap:\n        node = heapq.heappop(heap)\n        result.append(node)\n        for succ in sorted(graph[node]):  # sorted for determinism (heap handles overall order)\n            in_degree[succ] -= 1\n            if in_degree[succ] == 0:\n                heapq.heappush(heap, succ)\n\n    # 4. Cycle detection\n    if len(result) != len(graph):\n        # Find nodes that are still in a cycle (in_degree > 0)\n        cycle_nodes = sorted(node for node, deg in in_degree.items() if deg > 0)\n        raise ValueError(f\"cycle detected involving: {', '.join(cycle_nodes)}\")\n\n    return result\n",
+      "reasoning": "I implemented topological sort using Kahn's algorithm (BFS/in-degree approach) with a min-heap to enforce lexicographic ordering when multiple nodes have in-degree zero. Key design decisions:\n\n1. Empty graph returns [] immediately.\n2. Dangling successors are detected upfront with a clear error message mentioning the missing node.\n3. Kahn's algorithm naturally detects cycles: if the result list is shorter than the graph, some nodes are in a cycle. I identify them as nodes with remaining in-degree > 0 and list them sorted for a deterministic error message.\n4. The min-heap ensures that when multiple nodes are available (in-degree 0), we always pick the lexicographically smallest one first, satisfying the tie-breaking requirement.\n5. Self-loops are handled naturally by Kahn's algorithm since a self-loop gives a node an in-degree of at least 1 from itself, so it never reaches in-degree 0.",
+      "test_signal": "14 / 14 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": null
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 14,
+      "failed": 0,
+      "errors": 0,
+      "total": 14,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

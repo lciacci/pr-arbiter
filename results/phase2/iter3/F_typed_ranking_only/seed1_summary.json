@@ -1,0 +1,165 @@
+{
+  "overall": {
+    "tasks": 13,
+    "converged": 10,
+    "pass_rate": 0.7692307692307693,
+    "crashed": 0,
+    "avg_iterations": 1.6923076923076923,
+    "test_recall": 0.9939759036144579,
+    "total_tests": 166,
+    "total_passed": 165
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 4,
+      "converged": 4,
+      "iter_sum": 4,
+      "passed": 56,
+      "total": 56,
+      "pass_rate": 1.0,
+      "avg_iters": 1.0,
+      "test_recall": 1.0
+    },
+    "medium": {
+      "n": 4,
+      "converged": 2,
+      "iter_sum": 8,
+      "passed": 32,
+      "total": 32,
+      "pass_rate": 0.5,
+      "avg_iters": 2.0,
+      "test_recall": 1.0
+    },
+    "hard": {
+      "n": 3,
+      "converged": 3,
+      "iter_sum": 5,
+      "passed": 50,
+      "total": 50,
+      "pass_rate": 1.0,
+      "avg_iters": 1.6666666666666667,
+      "test_recall": 1.0
+    },
+    "underspec": {
+      "n": 2,
+      "converged": 1,
+      "iter_sum": 5,
+      "passed": 27,
+      "total": 28,
+      "pass_rate": 0.5,
+      "avg_iters": 2.5,
+      "test_recall": 0.9642857142857143
+    }
+  },
+  "per_task": [
+    {
+      "task_id": "task_001",
+      "converged": true,
+      "iterations": 1,
+      "passed": 13,
+      "total": 13,
+      "crashed": false
+    },
+    {
+      "task_id": "task_002",
+      "converged": true,
+      "iterations": 1,
+      "passed": 15,
+      "total": 15,
+      "crashed": false
+    },
+    {
+      "task_id": "task_003",
+      "converged": true,
+      "iterations": 1,
+      "passed": 14,
+      "total": 14,
+      "crashed": false
+    },
+    {
+      "task_id": "task_004",
+      "converged": true,
+      "iterations": 1,
+      "passed": 14,
+      "total": 14,
+      "crashed": false
+    },
+    {
+      "task_id": "task_005",
+      "converged": true,
+      "iterations": 1,
+      "passed": 17,
+      "total": 17,
+      "crashed": false
+    },
+    {
+      "task_id": "task_006",
+      "converged": true,
+      "iterations": 1,
+      "passed": 15,
+      "total": 15,
+      "crashed": false
+    },
+    {
+      "task_id": "task_007",
+      "converged": false,
+      "iterations": 3,
+      "passed": 0,
+      "total": 0,
+      "crashed": false
+    },
+    {
+      "task_id": "task_008",
+      "converged": false,
+      "iterations": 3,
+      "passed": 0,
+      "total": 0,
+      "crashed": false
+    },
+    {
+      "task_id": "task_009",
+      "converged": true,
+      "iterations": 3,
+      "passed": 16,
+      "total": 16,
+      "crashed": false
+    },
+    {
+      "task_id": "task_010",
+      "converged": true,
+      "iterations": 1,
+      "passed": 20,
+      "total": 20,
+      "crashed": false
+    },
+    {
+      "task_id": "task_011",
+      "converged": true,
+      "iterations": 1,
+      "passed": 14,
+      "total": 14,
+      "crashed": false
+    },
+    {
+      "task_id": "task_012",
+      "converged": false,
+      "iterations": 3,
+      "passed": 10,
+      "total": 11,
+      "crashed": false
+    },
+    {
+      "task_id": "task_013",
+      "converged": true,
+      "iterations": 2,
+      "passed": 17,
+      "total": 17,
+      "crashed": false
+    }
+  ],
+  "arm": "F_typed_ranking_only",
+  "mode": "writer+reviewer+arbiter",
+  "seed": 1,
+  "budget": 3,
+  "wall_seconds": 1032.4301908016205
+}

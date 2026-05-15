@@ -1,0 +1,32 @@
+{
+  "task_id": "task_006",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 15,
+  "final_total": 15,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 006 \u2014 Token bucket rate limiter\n\"\"\"\n\nimport time\n\n\nclass TokenBucket:\n    \"\"\"A token-bucket rate limiter with lazy (on-demand) refill.\"\"\"\n\n    def __init__(self, capacity: float, refill_rate: float, clock=None):\n        if capacity <= 0:\n            raise ValueError(f\"capacity must be positive, got {capacity!r}\")\n        if refill_rate <= 0:\n            raise ValueError(f\"refill_rate must be positive, got {refill_rate!r}\")\n\n        self._capacity = float(capacity)\n        self._refill_rate = float(refill_rate)\n        self._clock = clock if clock is not None else time.monotonic\n\n        # Bucket starts full.\n        self._tokens = self._capacity\n        self._last_refill = self._clock()\n\n    # ------------------------------------------------------------------\n    # Internal helpers\n    # ------------------------------------------------------------------\n\n    def _refill(self) -> None:\n        \"\"\"Bring the token count up to date based on elapsed time.\"\"\"\n        now = self._clock()\n        elapsed = now - self._last_refill\n        if elapsed > 0:\n            self._tokens = min(\n                self._capacity,\n                self._tokens + elapsed * self._refill_rate,\n            )\n            self._last_refill = now\n\n    # ------------------------------------------------------------------\n    # Public API\n    # ------------------------------------------------------------------\n\n    def tokens_available(self) -> float:\n        \"\"\"Return the current token count, refreshed from the clock.\"\"\"\n        self._refill()\n        return self._tokens\n\n    def try_consume(self, tokens: float = 1.0) -> bool:\n        \"\"\"\n        Attempt to consume *tokens* from the bucket.\n\n        Returns True and deducts the tokens if available;\n        returns False without deducting if unavailable.\n        Raises ValueError for non-positive token requests.\n        \"\"\"\n        if tokens <= 0:\n            raise ValueError(f\"tokens must be positive, got {tokens!r}\")\n\n        # A request larger than capacity can never be satisfied.\n        if tokens > self._capacity:\n            return False\n\n        self._refill()\n\n        if self._tokens >= tokens:\n            self._tokens -= tokens\n            return True\n        return False\n",
+      "reasoning": "Straightforward implementation of a token-bucket rate limiter. Key decisions:\n- Bucket starts full as specified.\n- Refill is lazy: performed inside both try_consume and tokens_available.\n- Requests larger than capacity always return False (spec says do NOT raise).\n- ValueError raised for capacity/refill_rate <= 0 and for tokens <= 0 in try_consume.\n- clock defaults to time.monotonic; accepts any zero-argument callable for deterministic testing.\n- tokens clamped to [0, capacity] \u2014 refill uses min(capacity, ...) and deduction only happens when tokens >= requested amount so balance stays >= 0.",
+      "test_signal": "15 / 15 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": null
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 15,
+      "failed": 0,
+      "errors": 0,
+      "total": 15,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

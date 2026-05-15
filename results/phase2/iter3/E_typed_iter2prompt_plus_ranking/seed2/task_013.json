@@ -1,0 +1,301 @@
+{
+  "task_id": "task_013",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 3,
+  "final_passed": 17,
+  "final_total": 17,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "import re\n\ndef normalize_whitespace(s: str) -> str:\n    \"\"\"Clean up whitespace in a string.\n    \n    Interpretation:\n    - Multiple spaces (and other horizontal whitespace) collapsed to a single space\n    - Leading/trailing spaces trimmed\n    - Multiple consecutive newlines collapsed to a single newline\n    - Spaces around newlines are also trimmed per line\n    \"\"\"\n    # Split into lines, strip each line, collapse internal spaces within each line\n    lines = s.split('\\n')\n    normalized_lines = [re.sub(r'[ \\t]+', ' ', line).strip() for line in lines]\n    # Collapse multiple consecutive empty lines into one (remove consecutive blank lines)\n    result_lines = []\n    prev_blank = False\n    for line in normalized_lines:\n        if line == '':\n            if not prev_blank and result_lines:  # Don't add leading blank lines\n                result_lines.append(line)\n            prev_blank = True\n        else:\n            result_lines.append(line)\n            prev_blank = False\n    # Remove trailing blank lines\n    while result_lines and result_lines[-1] == '':\n        result_lines.pop()\n    return '\\n'.join(result_lines)\n",
+      "reasoning": "The spec gives two examples:\n1. Multiple spaces collapsed to one, and leading/trailing spaces stripped.\n2. Multiple consecutive newlines collapsed to a single newline.\n\nMy interpretation:\n- Split on newlines to handle the two concerns separately\n- Within each line, collapse runs of horizontal whitespace (spaces/tabs) to a single space, then strip the line\n- Collapse consecutive blank lines into a single blank line (or remove them entirely if they appear at the start/end)\n\nLooking at example 2: \"line one\\n\\n\\nline two\" \u2192 \"line one\\nline two\", which means multiple newlines become a single newline \u2014 so blank lines between content lines are removed entirely (not kept as one blank line). I'll remove consecutive blank lines entirely.",
+      "test_signal": "12 / 17 tests passing",
+      "reviewer_feedback": [
+        {
+          "line_range": [
+            13,
+            27
+          ],
+          "category": "correctness",
+          "severity": "critical",
+          "finding_type": "spec-interpretation",
+          "description": "The first example requires that multiple spaces collapse to a single space and leading/trailing spaces are trimmed, but the code also strips leading blank lines. The spec example `normalize_whitespace(\"  hello   world  \")` \u2192 `\"hello world\"` is a single-line case and the stripping logic appears fine for it. However, the blank-line suppression logic (`not prev_blank and result_lines`) silently drops leading blank lines (e.g. `\"\\n\\nhello\"` would produce `\"hello\"` instead of `\"\\nhello\"` or similar). More critically, the second spec example `normalize_whitespace(\"line one\\n\\n\\nline two\")` \u2192 `\"line one\\nline two\"` collapses multiple consecutive newlines to a single newline. The current code collapses runs of blank lines to *one blank line* (i.e. one empty string element), which means the output would be `\"line one\\n\\nline two\"` (two newlines) rather than `\"line one\\nline two\"` (one newline).",
+          "rationale": "The spec states the result for `\"line one\\n\\n\\nline two\"` is `\"line one\\nline two\"` \u2014 a single `\\n` between the two lines, meaning all consecutive newlines (blank lines) are fully collapsed with no blank line left in between. The current code keeps one blank line between non-blank lines because it appends the empty-string element to `result_lines` when `prev_blank` is False. So `result_lines` ends up as `['line one', '', 'line two']`, which joins to `'line one\\n\\nline two'` \u2014 one extra newline compared to the expected output.",
+          "spec_quote": "normalize_whitespace(\"line one\\n\\n\\nline two\") \u2192 \"line one\\nline two\"",
+          "spec_quote_found_in_spec": false,
+          "downgraded_reason": "spec-violation with spec_quote not found in spec"
+        },
+        {
+          "line_range": [
+            13,
+            27
+          ],
+          "category": "spec-ambiguity",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The spec does not clarify whether blank lines should be removed entirely or collapsed to a single blank line. The writer chose to collapse runs of newlines to a single newline (no blank line), which matches the second example. However, it is ambiguous whether a single standalone blank line (e.g. `\"hello\\n\\nworld\"`) should become `\"hello\\nworld\"` (remove it) or `\"hello\\n\\nworld\"` (keep it). Based on the example the safer interpretation is to remove all blank lines entirely, collapsing any sequence of newlines into exactly one.",
+          "rationale": "The spec only provides one multi-line example and it shows 3 newlines collapsing to 1. The writer's intent (in the docstring) is correct but the implementation keeps one blank line between non-blank content. The blank-line guard on line 18 (`if not prev_blank and result_lines`) should instead *never* append empty lines, ensuring all consecutive newlines collapse to a single separator.",
+          "proposed_interpretation": "Any run of one or more consecutive newlines (possibly with surrounding horizontal whitespace) should be collapsed to a single newline, and no blank lines should appear in the output.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            18,
+            19
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "Leading blank lines are silently dropped due to the `result_lines` guard (`not prev_blank and result_lines`). If the input begins with newlines (e.g. `\"\\nhello\"`), no blank line is ever appended even if the intended behavior is to emit a leading newline or stripped version. While the spec does not cover this case explicitly, the asymmetry between leading and trailing blank-line handling may cause unexpected test failures.",
+          "rationale": "The condition `result_lines` (non-empty) prevents any blank line from being added before the first non-blank line. This means `\"\\nhello world\"` and `\"hello world\"` would produce the same output. Whether that is intended is not specified, but it is an implicit assumption that may conflict with test expectations.",
+          "proposed_interpretation": "Leading blank lines (newlines before first non-blank content) should also be stripped, consistent with the stripping of leading/trailing spaces.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            13,
+            13
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The code only handles `\\n` as a line separator via `s.split('\\n')`, so `\\r\\n` (Windows) and `\\r` (old Mac) line endings are not normalized. A `\\r\\n` sequence would leave a trailing `\\r` on each 'line' after splitting on `\\n` alone, potentially producing garbled output.",
+          "rationale": "Lines 13 splits exclusively on '\\n'. An input like 'hello\\r\\nworld' splits into ['hello\\r', 'world']; after stripping horizontal whitespace '\\r' is not matched by `[ \\t]+`, but `.strip()` on line 14 will strip '\\r' (since strip() removes all whitespace including carriage returns). So Windows CRLF is handled accidentally by `.strip()`, but a lone `\\r` (e.g. 'hello\\rworld') would not be split at all and the carriage return would survive. This is a gap in the implementation not flagged by the first reviewer.",
+          "proposed_interpretation": "The spec does not clarify line ending style; the implementation should at minimum handle \\r\\n and \\r in addition to \\n, e.g. by using splitlines() instead of split('\\n').",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            14,
+            14
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "The regex `[ \\t]+` collapses only ASCII space and tab. Other Unicode horizontal whitespace characters (e.g. non-breaking space U+00A0, en-space, ideographic space) are not collapsed. Depending on test inputs this could cause failures.",
+          "rationale": "The spec says 'messy whitespace' without specifying character set. Using `[ \\t]+` misses other horizontal whitespace characters. `re.sub(r'\\s+', ' ', ...)` or `re.sub(r'[^\\S\\n]+', ' ', ...)` would be more robust. The first reviewer did not address this.",
+          "proposed_interpretation": "Collapse all horizontal whitespace (not just ASCII space and tab) to a single space.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            13,
+            27
+          ],
+          "category": "style",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "The entire blank-line collapsing loop (lines 16\u201325) plus the trailing-blank-line removal (lines 26\u201327) can be replaced by a single `re.sub(r'\\n+', '\\n', ...)` after the per-line normalization step, reducing complexity and the chance of subtle logic bugs. The current 12-line hand-rolled loop is a reinvented stdlib/regex pattern.",
+          "rationale": "Python's re.sub can express 'collapse runs of newlines to one newline' in one call. The hand-rolled loop introduced the critical off-by-one bug (keeping one blank line) already flagged by the first reviewer, illustrating how unnecessary complexity leads to correctness issues.",
+          "proposed_interpretation": "Use re.sub(r'\\n+', '\\n', joined).strip() instead of the custom loop.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "pass_ranking_shown": null
+    },
+    {
+      "code": "import re\n\ndef normalize_whitespace(s: str) -> str:\n    \"\"\"Clean up whitespace in a string.\n    \n    Interpretation:\n    - Multiple spaces/tabs (horizontal whitespace) within a line collapsed to a single space\n    - Leading/trailing spaces trimmed per line\n    - Multiple consecutive newlines collapsed to a single newline\n    - Leading/trailing newlines removed from the result\n    - Handles \\r\\n and \\r line endings by normalizing to \\n first\n    \"\"\"\n    # Normalize line endings to \\n\n    s = s.replace('\\r\\n', '\\n').replace('\\r', '\\n')\n    \n    # Split into lines, strip each line, collapse internal horizontal whitespace\n    lines = s.split('\\n')\n    normalized_lines = [re.sub(r'[^\\S\\n]+', ' ', line).strip() for line in lines]\n    \n    # Join back and collapse multiple consecutive newlines to a single newline\n    joined = '\\n'.join(normalized_lines)\n    result = re.sub(r'\\n+', '\\n', joined)\n    \n    # Strip leading/trailing newlines and spaces\n    return result.strip()\n",
+      "reasoning": "Based on reviewer feedback, the main bug was that my loop kept one blank line between non-blank content (producing \"line one\\n\\nline two\" instead of \"line one\\nline two\"). The fix is to use re.sub(r'\\n+', '\\n', ...) to collapse all consecutive newlines into exactly one. I also:\n1. Normalize line endings (\\r\\n and \\r) to \\n first\n2. Use [^\\S\\n]+ instead of [ \\t]+ to catch all horizontal whitespace (not just ASCII space and tab)\n3. Simplified the blank-line handling to a single regex substitution\n4. Strip the final result to remove any leading/trailing whitespace including newlines",
+      "test_signal": "16 / 17 tests passing",
+      "reviewer_feedback": [
+        {
+          "line_range": [
+            18,
+            21
+          ],
+          "category": "correctness",
+          "severity": "critical",
+          "finding_type": "spec-interpretation",
+          "description": "The second spec example requires that multiple consecutive newlines collapse to a single newline (not a blank line). The current code splits on '\\n', strips each line, and rejoins \u2014 but blank lines between non-blank lines survive as empty strings. After joining with '\\n'.join, two consecutive newlines (one blank line) remain rather than being collapsed to a single newline.",
+          "rationale": "Consider input `\"line one\\n\\n\\nline two\"`. After split('\\n') you get `['line one', '', '', 'line two']`. After normalization each empty string stays `''`. After `'\\n'.join(...)` you get `\"line one\\n\\n\\nline two\"`. Then `re.sub(r'\\n+', '\\n', joined)` correctly collapses this to `\"line one\\nline two\"`. Actually this path looks correct \u2014 but the bug is subtler: a *single* blank line input like `\"hello\\n\\nworld\"` splits to `['hello', '', 'world']`, joins to `\"hello\\n\\nworld\"`, and then `re.sub(r'\\n+', '\\n', ...)` collapses it to `\"hello\\nworld\"`. That matches the spec example's intent. So this particular path is fine. However, see the next finding about lines that contain only whitespace.",
+          "spec_quote": "normalize_whitespace(\"line one\\n\\n\\nline two\") \u2192 \"line one\\nline two\"",
+          "spec_quote_found_in_spec": false,
+          "downgraded_reason": "spec-violation with spec_quote not found in spec"
+        },
+        {
+          "line_range": [
+            18,
+            21
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "Lines that contain only whitespace (e.g. spaces or tabs) are stripped to empty strings and then treated as blank lines, which means they get collapsed by the subsequent `re.sub(r'\\n+', '\\n', ...)`. This is almost certainly the desired behaviour, but it is worth confirming that a line like `\"hello\\n   \\nworld\"` should become `\"hello\\nworld\"` and not `\"hello\\n \\nworld\"`. The current code does produce `\"hello\\nworld\"`, which matches the spirit of the spec but is not explicitly stated.",
+          "rationale": "The per-line `.strip()` at line 18 turns whitespace-only lines into empty strings. The collapse regex on line 21 then removes them. This is likely correct but is an interpretation choice.",
+          "proposed_interpretation": "Whitespace-only lines should be treated as blank lines and collapsed along with other consecutive newlines.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            14,
+            14
+          ],
+          "category": "spec-ambiguity",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The spec does not mention `\\r\\n` or `\\r` line endings. The writer normalises them to `\\n` first, which is a reasonable choice but untested by the spec. If the test suite passes raw `\\r\\n` strings and expects `\\n` output this is correct; if it expects `\\r\\n` to be preserved in some form, this will break. No action needed unless tests fail on this point.",
+          "rationale": "The spec only shows Unix-style newlines in examples. The normalization is a safe interpretation but is not mandated.",
+          "proposed_interpretation": "Normalise \\r\\n and \\r to \\n before processing, consistent with Python's universal newline convention.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            23,
+            23
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The final `.strip()` removes both leading/trailing spaces AND leading/trailing newlines from the result. The first spec example implies leading/trailing spaces should be stripped. The second implies leading/trailing newlines from the *original* input would also be stripped (since `\"line one\\n\\n\\nline two\"` has no leading/trailing newlines to worry about). However, for an input like `\"\\nhello\\n\"`, `.strip()` produces `\"hello\"` \u2014 this trims the surrounding newlines. This is likely the intended behaviour but is not explicitly stated in the spec.",
+          "rationale": "The spec examples don't cover inputs with leading/trailing newlines. `.strip()` removes all leading/trailing whitespace including newlines. If the intent is only to strip spaces (not newlines) at the boundaries, `.strip(' ')` or a more targeted approach would be needed. Given the first example strips spaces this is probably fine, but worth flagging.",
+          "proposed_interpretation": "Strip all leading and trailing whitespace (spaces and newlines) from the final result.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            18,
+            18
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "The regex `[^\\S\\n]+` on individual lines (which have already been split on `\\n`) will never see a `\\n` character. The `[^\\S\\n]` exclusion is harmless but unnecessary \u2014 `[ \\t]+` or `\\s+` (since newlines are already split out) would be equivalent and clearer.",
+          "rationale": "After splitting on '\\n', each `line` string contains no newline characters. The `[^\\S\\n]` pattern is logically equivalent to `\\s` in this context (excluding newline, but newlines are absent anyway). This is a style nit and does not affect correctness.",
+          "proposed_interpretation": "Use `[ \\t]+` or `[^\\S\\n]+` \u2014 both are correct here; the former is more explicit.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            18,
+            18
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "After splitting on '\\n' the individual line strings can never contain '\\n', so `re.sub(r'[^\\S\\n]+', ' ', line)` is equivalent to `re.sub(r'\\s+', ' ', line)`. This means it also collapses form-feeds (\\f), vertical tabs (\\v), and other Unicode whitespace characters within a line into a single space. Whether those characters should be treated as intra-line whitespace or preserved is unspecified.",
+          "rationale": "The character class `[^\\S\\n]` (non-whitespace-excluding-newline, negated) matches any whitespace except newline, including \\t, \\f, \\v, non-breaking space, etc. This is likely intentional for tabs, but may be surprising for other Unicode whitespace. The spec only shows spaces and newlines in examples.",
+          "proposed_interpretation": "If only spaces and tabs should be collapsed, use `[ \\t]+` explicitly. If all non-newline whitespace should be collapsed, the current regex is correct.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            21,
+            21
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "After per-line `.strip()`, blank lines (originally empty or whitespace-only) become empty strings. After `'\\n'.join(normalized_lines)`, two adjacent blank lines produce two consecutive '\\n' characters (e.g. ['hello', '', '', 'world'] \u2192 'hello\\n\\n\\nworld'). The `re.sub(r'\\n+', '\\n', joined)` then collapses ALL runs of newlines \u2014 including a single blank line between two non-blank lines \u2014 to a single '\\n'. This means `\"hello\\n\\nworld\"` (one blank line) and `\"hello\\nworld\"` (no blank line) produce identical output `\"hello\\nworld\"`. The spec example only demonstrates collapsing *multiple* consecutive newlines; it is silent on whether a single blank line (two newlines) should also be collapsed. The current code treats them identically.",
+          "rationale": "The spec example `\"line one\\n\\n\\nline two\"` \u2192 `\"line one\\nline two\"` shows three newlines (two blank lines) collapsing to one. The code also collapses two newlines (one blank line) to one. This is plausible but is an untested interpretation \u2014 the first reviewer noted this case but did not flag the asymmetry clearly: single-blank-line collapse is not demonstrated by the spec.",
+          "proposed_interpretation": "Collapsing any run of 2+ newlines to a single newline is the most defensible reading of the spec example. Current behaviour is likely correct.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            18,
+            23
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "An empty string input `\"\"` is handled: split gives `['']`, normalization gives `['']`, join gives `''`, collapse is `''`, strip is `''`. This is fine. However, a string of only whitespace like `\"   \\n  \\n  \"` will produce `''` (empty string) after stripping. No crash, but worth confirming this is the desired result since the spec does not address it.",
+          "rationale": "No crash risk, but the all-whitespace \u2192 empty string outcome is an implicit design choice not covered by the spec. The first reviewer did not flag this edge case.",
+          "proposed_interpretation": "All-whitespace input should return empty string, consistent with the strip-and-collapse logic.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            18,
+            18
+          ],
+          "category": "style",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "The list comprehension on line 18 applies `re.sub` followed by `.strip()` to every line individually. The `.strip()` call after `re.sub(r'[^\\S\\n]+', ' ', line)` can only remove a single leading/trailing space (since all runs of whitespace are already collapsed to one space). It would be slightly cleaner and marginally more efficient to use `re.sub(r'^[^\\S\\n]+|[^\\S\\n]+$', '', ...)` or simply trim before the sub. This is purely a style/micro-optimisation note.",
+          "rationale": "`.strip()` after the regex sub is correct but redundant in the sense that at most one space can appear at each end after the sub. No correctness issue.",
+          "proposed_interpretation": "Use `.strip()` before `re.sub` for clarity, or strip leading/trailing non-newline whitespace via the regex itself.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "pass_ranking_shown": "# Your prior attempts on this task, ranked by pass count (highest first)\n\n- Attempt 1: 12 / 17 passing\n\nIf your most recent attempt has a lower pass count than a prior attempt, your last change made things worse. Consider reverting toward the higher-scoring approach.\n\n"
+    },
+    {
+      "code": "import re\n\ndef normalize_whitespace(s: str) -> str:\n    \"\"\"Clean up whitespace in a string.\n    \n    Interpretation:\n    - Multiple spaces/tabs (horizontal whitespace) within a line collapsed to a single space\n    - Leading/trailing horizontal whitespace trimmed per line\n    - Multiple consecutive newlines collapsed to a single newline\n    - Leading/trailing whitespace removed from the result\n    - Handles \\r\\n and \\r line endings by normalizing to \\n first\n    - Whitespace-only lines are treated as blank lines and collapsed\n    \"\"\"\n    # Normalize line endings to \\n\n    s = s.replace('\\r\\n', '\\n').replace('\\r', '\\n')\n    \n    # Split into lines, strip each line, collapse internal horizontal whitespace\n    lines = s.split('\\n')\n    normalized_lines = [re.sub(r'[ \\t]+', ' ', line).strip() for line in lines]\n    \n    # Join back and collapse multiple consecutive newlines to a single newline\n    joined = '\\n'.join(normalized_lines)\n    result = re.sub(r'\\n+', '\\n', joined)\n    \n    # Strip leading/trailing whitespace\n    return result.strip()\n",
+      "reasoning": "My attempt 2 scored 16/17. The reviewers flagged that `[^\\S\\n]+` is more complex than needed since lines have no newlines after splitting. I've simplified to `[ \\t]+` which is explicit about collapsing only spaces and tabs. The rest of the logic (normalize line endings, per-line strip, collapse multiple newlines, final strip) is unchanged since it was already handling the spec examples correctly and gave 16/17. The one failing test is unknown, but the feedback suggests the `[^\\S\\n]+` regex handling non-ASCII whitespace or the complexity could be an issue. Using `[ \\t]+` is the explicit safe choice. Everything else stays the same as attempt 2 which was the highest scorer.",
+      "test_signal": "17 / 17 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": "# Your prior attempts on this task, ranked by pass count (highest first)\n\n- Attempt 2: 16 / 17 passing\n- Attempt 1: 12 / 17 passing\n\nIf your most recent attempt has a lower pass count than a prior attempt, your last change made things worse. Consider reverting toward the higher-scoring approach.\n\n"
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 12,
+      "failed": 5,
+      "errors": 0,
+      "total": 17,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_spec_example_blank_lines",
+          "outcome": "failed",
+          "longrepr": "tests.py:29: in test_spec_example_blank_lines\n    assert normalize_whitespace(\"line one\\n\\n\\nline two\") == \"line one\\nline two\"\nE   AssertionError: assert 'line one\\n\\nline two' == 'line one\\nline two'\nE     \nE       line one\nE     + \nE       line two"
+        },
+        {
+          "nodeid": "tests.py::test_two_newlines_collapse",
+          "outcome": "failed",
+          "longrepr": "tests.py:59: in test_two_newlines_collapse\n    assert normalize_whitespace(\"a\\n\\nb\") == \"a\\nb\"\nE   AssertionError: assert 'a\\n\\nb' == 'a\\nb'\nE     \nE       a\nE     + \nE       b"
+        },
+        {
+          "nodeid": "tests.py::test_many_newlines_collapse",
+          "outcome": "failed",
+          "longrepr": "tests.py:63: in test_many_newlines_collapse\n    assert normalize_whitespace(\"a\\n\\n\\n\\n\\nb\") == \"a\\nb\"\nE   AssertionError: assert 'a\\n\\nb' == 'a\\nb'\nE     \nE       a\nE     + \nE       b"
+        },
+        {
+          "nodeid": "tests.py::test_newlines_with_whitespace_between_collapse",
+          "outcome": "failed",
+          "longrepr": "tests.py:69: in test_newlines_with_whitespace_between_collapse\n    assert normalize_whitespace(\"a\\n   \\nb\") == \"a\\nb\"\nE   AssertionError: assert 'a\\n\\nb' == 'a\\nb'\nE     \nE       a\nE     + \nE       b"
+        },
+        {
+          "nodeid": "tests.py::test_lone_cr_normalized",
+          "outcome": "failed",
+          "longrepr": "tests.py:79: in test_lone_cr_normalized\n    assert normalize_whitespace(\"a\\rb\") == \"a\\nb\"\nE   AssertionError: assert 'a\\rb' == 'a\\nb'\nE     \nE     - a\nE     + a\nE       b"
+        }
+      ]
+    },
+    {
+      "passed": 16,
+      "failed": 1,
+      "errors": 0,
+      "total": 17,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_nbsp_preserved",
+          "outcome": "failed",
+          "longrepr": "tests.py:104: in test_nbsp_preserved\n    assert normalize_whitespace(\"a\\xa0b\") == \"a\\xa0b\"\nE   AssertionError: assert 'a b' == 'a\\xa0b'\nE     \nE     - a\u00a0b\nE     + a b"
+        }
+      ]
+    },
+    {
+      "passed": 17,
+      "failed": 0,
+      "errors": 0,
+      "total": 17,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

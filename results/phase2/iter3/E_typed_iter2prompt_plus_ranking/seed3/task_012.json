@@ -1,0 +1,32 @@
+{
+  "task_id": "task_012",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 11,
+  "final_total": 11,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets the spec as: support common date formats that users might type,\nincluding ISO format (YYYY-MM-DD), long month name formats, short month name\nformats, and other common separators (/, .). Raises ValueError for unparseable input.\n\"\"\"\n\nfrom datetime import datetime\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not s or not s.strip():\n        raise ValueError(f\"Cannot parse empty date string: {repr(s)}\")\n\n    s = s.strip()\n\n    # List of formats to try, in order of likelihood\n    formats = [\n        \"%Y-%m-%d\",       # 2024-03-15\n        \"%Y/%m/%d\",       # 2024/03/15\n        \"%Y.%m.%d\",       # 2024.03.15\n        \"%B %d, %Y\",      # March 15, 2024\n        \"%B %d %Y\",       # March 15 2024\n        \"%b %d, %Y\",      # Mar 15, 2024\n        \"%b %d %Y\",       # Mar 15 2024\n        \"%d %B %Y\",       # 15 March 2024\n        \"%d %b %Y\",       # 15 Mar 2024\n        \"%d-%B-%Y\",       # 15-March-2024\n        \"%d-%b-%Y\",       # 15-Mar-2024\n        \"%m/%d/%Y\",       # 03/15/2024\n        \"%d/%m/%Y\",       # 15/03/2024\n        \"%m-%d-%Y\",       # 03-15-2024\n        \"%d.%m.%Y\",       # 15.03.2024\n        \"%m.%d.%Y\",       # 03.15.2024\n        \"%B %Y\",          # March 2024 (day=1)\n        \"%b %Y\",          # Mar 2024 (day=1)\n        \"%Y %B %d\",       # 2024 March 15\n        \"%Y %b %d\",       # 2024 Mar 15\n        \"%d %B, %Y\",      # 15 March, 2024\n        \"%d %b, %Y\",      # 15 Mar, 2024\n    ]\n\n    for fmt in formats:\n        try:\n            dt = datetime.strptime(s, fmt)\n            return (dt.year, dt.month, dt.day)\n        except ValueError:\n            continue\n\n    raise ValueError(f\"Cannot parse date string: {repr(s)}\")\n",
+      "reasoning": "The spec asks for a function that parses human-readable date strings into (year, month, day) tuples. The two concrete examples given are ISO format \"2024-03-15\" and long month name \"March 15, 2024\". I'll implement this by trying a list of common date formats using Python's datetime.strptime, covering ISO format, slashed formats, dotted formats, long and short month names in various orderings. I raise ValueError for anything that can't be parsed.",
+      "test_signal": "11 / 11 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": null
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "total": 11,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

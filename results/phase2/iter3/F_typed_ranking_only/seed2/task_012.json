@@ -1,0 +1,315 @@
+{
+  "task_id": "task_012",
+  "mode": "writer+reviewer+arbiter",
+  "converged": false,
+  "iterations": 3,
+  "final_passed": 9,
+  "final_total": 11,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets the spec as: support a wide variety of common human-readable date\nformats and return (year, month, day) as integers.  Raise ValueError for\nanything that cannot be parsed.\n\nSupported formats include (non-exhaustive):\n  ISO-style:       2024-03-15, 2024/03/15, 2024.03.15\n  US-style:        03/15/2024, 3-15-2024\n  Long month name: March 15, 2024 / 15 March 2024\n  Short month name: Mar 15, 2024 / 15 Mar 2024\n  Two-digit year:  03/15/24  \u2192 interpreted with datetime.strptime century logic\n  ...and more via dateutil / brute-force strptime scanning.\n\nStdlib only (no dateutil).  We use a large list of strptime format strings plus\na custom long-form parser.\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n# Month name \u2192 number mapping (full and abbreviated)\n_MONTH_NAMES = {\n    \"january\": 1, \"february\": 2, \"march\": 3, \"april\": 4,\n    \"may\": 5, \"june\": 6, \"july\": 7, \"august\": 8,\n    \"september\": 9, \"october\": 10, \"november\": 11, \"december\": 12,\n    \"jan\": 1, \"feb\": 2, \"mar\": 3, \"apr\": 4,\n    \"jun\": 6, \"jul\": 7, \"aug\": 8,\n    \"sep\": 9, \"oct\": 10, \"nov\": 11, \"dec\": 12,\n}\n\n# strptime format strings to try in order\n_FORMATS = [\n    # ISO / numeric with various separators\n    \"%Y-%m-%d\",\n    \"%Y/%m/%d\",\n    \"%Y.%m.%d\",\n    \"%Y %m %d\",\n    # US style  mm/dd/yyyy\n    \"%m/%d/%Y\",\n    \"%m-%d-%Y\",\n    \"%m.%d.%Y\",\n    \"%m %d %Y\",\n    # day first  dd/mm/yyyy  \u2014 tried AFTER US style; ambiguous cases resolved\n    # by position (US style wins when both are valid)\n    \"%d/%m/%Y\",\n    \"%d-%m-%Y\",\n    \"%d.%m.%Y\",\n    # Long month name\n    \"%B %d, %Y\",\n    \"%B %d %Y\",\n    \"%d %B %Y\",\n    \"%d %B, %Y\",\n    # Abbreviated month name\n    \"%b %d, %Y\",\n    \"%b %d %Y\",\n    \"%d %b %Y\",\n    \"%d %b, %Y\",\n    # With time components (ignored)\n    \"%Y-%m-%dT%H:%M:%S\",\n    \"%Y-%m-%d %H:%M:%S\",\n    \"%Y-%m-%dT%H:%M:%SZ\",\n    # Two-digit year (strptime uses 2000+yy for yy <= 68)\n    \"%m/%d/%y\",\n    \"%d/%m/%y\",\n    \"%y-%m-%d\",\n    \"%y/%m/%d\",\n    # Ordinal suffixes stripped later\n]\n\n\ndef _strip_ordinal(s: str) -> str:\n    \"\"\"Remove ordinal suffixes: 1st \u2192 1, 2nd \u2192 2, 3rd \u2192 3, 4th \u2192 4, etc.\"\"\"\n    return re.sub(r'(\\d+)(st|nd|rd|th)\\b', r'\\1', s, flags=re.IGNORECASE)\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s)}\")\n\n    original = s\n    s = s.strip()\n\n    if not s:\n        raise ValueError(\"Empty string cannot be parsed as a date\")\n\n    # Remove ordinal suffixes (e.g. \"March 1st, 2024\")\n    s_clean = _strip_ordinal(s)\n\n    # Try all strptime formats\n    for fmt in _FORMATS:\n        for candidate in (s_clean, s_clean.title()):\n            try:\n                dt = datetime.strptime(candidate.strip(), fmt)\n                return (dt.year, dt.month, dt.day)\n            except ValueError:\n                pass\n\n    # Fallback: attempt a flexible regex-based parse for patterns like\n    # \"15-Mar-2024\", \"2024 March 15\", \"March/15/2024\", etc.\n    # Normalize separators to spaces\n    normalized = re.sub(r'[\\s,/.\\-]+', ' ', s_clean).strip()\n    parts = normalized.split()\n\n    if len(parts) == 3:\n        year, month, day = _guess_ymd(parts)\n        if year is not None:\n            return (year, month, day)\n\n    raise ValueError(f\"Cannot parse date string: {original!r}\")\n\n\ndef _to_month_num(token: str) -> int | None:\n    \"\"\"Convert a token to a month number, or None if not recognizable.\"\"\"\n    lower = token.lower()\n    if lower in _MONTH_NAMES:\n        return _MONTH_NAMES[lower]\n    # Try as integer\n    try:\n        m = int(token)\n        if 1 <= m <= 12:\n            return m\n    except ValueError:\n        pass\n    return None\n\n\ndef _guess_ymd(parts: list[str]) -> tuple[int | None, int | None, int | None]:\n    \"\"\"\n    Given exactly 3 string parts, try to figure out which is year, month, day.\n    Returns (year, month, day) integers or (None, None, None) on failure.\n    \"\"\"\n    # Identify which parts are pure integers\n    int_vals = []\n    for p in parts:\n        try:\n            int_vals.append(int(p))\n        except ValueError:\n            int_vals.append(None)\n\n    # Check if any part is a month name\n    month_indices = []\n    for i, p in enumerate(parts):\n        if p.lower() in _MONTH_NAMES:\n            month_indices.append(i)\n\n    if len(month_indices) == 1:\n        mi = month_indices[0]\n        month = _MONTH_NAMES[parts[mi].lower()]\n        remaining = [(i, int_vals[i]) for i in range(3) if i != mi]\n        # remaining should be two integers\n        if all(v is not None for _, v in remaining):\n            a_idx, a = remaining[0]\n            b_idx, b = remaining[1]\n            # Determine which is year vs day\n            # Year is typically 4 digits or > 31\n            if a > 31 or (a >= 100):\n                return (a, month, b)\n            elif b > 31 or (b >= 100):\n                return (b, month, a)\n            else:\n                # Ambiguous: assume first non-month is day if \u226431 else year\n                # Convention: larger number = year\n                if a > b:\n                    return (a, month, b)\n                else:\n                    return (b, month, a)\n        return (None, None, None)\n\n    # All three are integers (or should be)\n    if all(v is not None for v in int_vals):\n        a, b, c = int_vals\n\n        # If one value is clearly a year (>= 1000 or > 31)\n        if a >= 1000:\n            # Year-first: a=year, then figure out month/day\n            # b is month if 1<=b<=12, c is day\n            if 1 <= b <= 12 and 1 <= c <= 31:\n                return (a, b, c)\n            elif 1 <= c <= 12 and 1 <= b <= 31:\n                return (a, c, b)\n        elif c >= 1000:\n            # Year-last\n            if 1 <= a <= 12 and 1 <= b <= 31:\n                return (c, a, b)\n            elif 1 <= b <= 12 and 1 <= a <= 31:\n                return (c, b, a)\n        # Two-digit year or purely ambiguous \u2014 skip\n        return (None, None, None)\n\n    return (None, None, None)\n",
+      "reasoning": "I implemented a robust `parse_date` function that handles many common date formats using a list of `strptime` format strings plus a custom fallback regex/heuristic parser. The approach:\n\n1. Strip ordinal suffixes (1st, 2nd, etc.)\n2. Try a comprehensive list of strptime formats covering ISO, US, European, and long/short month name styles\n3. Fallback: normalize separators to spaces, split into 3 parts, and use heuristics to identify year/month/day based on numeric magnitude and month name lookup\n\nBoth spec examples are explicitly covered: `%Y-%m-%d` and `%B %d, %Y`.",
+      "test_signal": "8 / 11 tests passing",
+      "reviewer_feedback": [
+        {
+          "line_range": [
+            29,
+            29
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-violation",
+          "description": "The abbreviated month name mapping is missing 'may' (May = 5). The key 'may' is absent from `_MONTH_NAMES`, meaning any date string using 'May' as the month name will fail to parse via the fallback regex path.",
+          "rationale": "In the `_MONTH_NAMES` dict on lines 26-34, all abbreviated three-letter month names are listed but 'may' is missing. Since May's full name and abbreviation are the same ('May'/'may'), it was likely accidentally omitted when writing the abbreviated block. Any date with the word 'May' that reaches the `_guess_ymd` fallback will not be recognized as a month name. Note that strptime (%B/%b) handles it correctly for the strptime path, but the fallback path will silently fail for May.",
+          "spec_quote": "The function should be robust to common formats users might type.",
+          "spec_quote_found_in_spec": true
+        },
+        {
+          "line_range": [
+            62,
+            66
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `.title()` candidate transformation may corrupt already-correct strings (e.g. month abbreviations or names in mixed case) and could cause false matches with wrong semantics.",
+          "rationale": "Applying `.title()` to normalize case is a workaround, but `datetime.strptime` with `%B` and `%b` already handles case-insensitive month names on most platforms. The `.title()` call on lines 63-65 transforms e.g. 'MARCH 15, 2024' to 'March 15, 2024' which is fine, but it could also transform '15 mar 2024' to '15 Mar 2024' which strptime already handles. The risk is low but there may be edge cases where `.title()` mangles a valid string (e.g. 'march' \u2192 'March' is fine, but multi-word tokens can be mishandled by title()). This is not a spec violation but may produce unexpected behavior.",
+          "proposed_interpretation": "Use `.lower()` or case-insensitive parsing rather than `.title()` to avoid potential issues.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            113,
+            130
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "In `_guess_ymd`, when a month name is found and both remaining parts are small integers (\u226431 and \u226431), the tiebreak logic assumes the larger number is the year, which is wrong for cases like 'March 5 3' or valid ambiguous real inputs.",
+          "rationale": "Lines 120-128: if neither remaining integer is > 31, the code uses `if a > b: return (a, month, b)` \u2014 i.e., the larger of the two is assumed to be the year. But both numbers could be valid day values (e.g. day=15, day=3), or the year could be a two-digit year like '24'. In the two-digit year ambiguity case this produces wrong results (e.g. '15 March 24' would yield year=24, day=15 but strptime with %d %b %y would yield year=2024). However, in practice, most inputs with a named month will have a 4-digit year, so this matters mainly for 2-digit-year + named-month inputs.",
+          "proposed_interpretation": "Prefer the strptime path (which handles 2-digit years via %y) for named-month formats; only fall back to `_guess_ymd` for truly ambiguous numeric cases.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            44,
+            57
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "Day-first formats (%d/%m/%Y, %d-%m-%Y, %d.%m.%Y) are tried after US-style formats, meaning ambiguous inputs like '03/05/2024' will always be interpreted as month=3, day=5 (US style) rather than day=3, month=5 (day-first).",
+          "rationale": "The spec says 'robust to common formats users might type' but does not specify US vs. day-first preference. The ordering is a reasonable choice, but it's worth noting this is an interpretation. For the two spec examples given, this doesn't matter. This is low severity as it's a known ambiguity the author even comments on.",
+          "proposed_interpretation": "The current US-first ordering is a reasonable interpretation of 'common formats' for an English-language context.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            76,
+            82
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The separator normalization regex `r'[\\s,/.\\-]+'` treats all of those characters as whitespace, which means it also strips commas and dots that are integral to some formats. For example, '2024.03.15' would be normalized to '2024 03 15' in the fallback, but it's already handled by strptime. The concern is that this same normalization would also mangle inputs where a dot is NOT a separator (e.g., a decimal in a number), but more importantly it strips the comma in 'March 15, 2024' \u2014 however that format is handled by strptime before reaching the fallback.",
+          "rationale": "The fallback is only reached if strptime fails, so inputs reaching the fallback have already failed all strptime formats. The normalization is reasonable for truly ambiguous inputs. Low real-world risk.",
+          "proposed_interpretation": "The normalization approach is acceptable for the fallback path.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            27,
+            34
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-violation",
+          "description": "The `_MONTH_NAMES` dictionary is missing the key 'may' for the full month name lookup. The full-name block (lines 26-29) only goes up to 'december'; 'may' is listed neither in the full-name block (where it belongs alongside 'march', 'april', etc.) nor in the abbreviated block. Because 'may' == its own abbreviation, the full-name block should include it, and it is absent entirely.",
+          "rationale": "Line 28 has 'march': 3, 'april': 4 and then jumps to line 29 with 'may': 5 \u2026 actually re-reading: 'may' IS missing from the full-name block (line 28 ends at april, line 29 starts with june). The abbreviated block (lines 32-34) also skips 'may'. So _MONTH_NAMES has no entry for 'may' at all. The first reviewer noted this only for the abbreviated block path; it is equally missing from the full-name block, meaning the fallback _guess_ymd fails for *any* capitalisation of 'May'.",
+          "spec_quote": "The function should be robust to common formats users might type.",
+          "spec_quote_found_in_spec": true
+        },
+        {
+          "line_range": [
+            133,
+            145
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "In `_guess_ymd`, when all three parts are integers and the year is last (`c >= 1000`), the month/day disambiguation checks `1 <= a <= 12 and 1 <= b <= 31` and assumes US order (month first). However, the same block does NOT handle the case where `b >= 1000` (middle position year), so inputs like '03 2024 15' silently return `(None, None, None)` rather than raising ValueError or attempting a parse.",
+          "rationale": "The three-integer branch handles `a >= 1000` (year first) and `c >= 1000` (year last) but has no `elif b >= 1000` branch. A middle-year format, while unusual, could reach `_guess_ymd` after separator normalization (e.g. some non-standard input). The missing case means the function falls through to `return (None, None, None)` and ultimately raises ValueError, which may be acceptable\u2014but for cases like '15 2024 03' this is silently dropped rather than attempted.",
+          "proposed_interpretation": "Add an `elif b >= 1000` branch to handle year-in-middle numeric inputs, or at minimum document this as unsupported.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            1,
+            160
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The function performs no validation that the returned (year, month, day) tuple represents a *real* calendar date. `datetime.strptime` will reject invalid dates (e.g. month=13, day=32), but the custom `_guess_ymd` fallback can return tuples like `(2024, 2, 30)` or `(2024, 13, 5)` without any validation, because it only checks broad ranges (`1 <= b <= 12`, `1 <= c <= 31`) without verifying the day is valid for that month.",
+          "rationale": "For example, input '2024-02-30' is caught by strptime (raises ValueError). But a path through `_guess_ymd` that assembles `(year=2024, month=2, day=30)` would return successfully without checking calendar validity. The spec says to raise ValueError for input that cannot be parsed as a date; '2024-02-30' is not a valid date.",
+          "proposed_interpretation": "After `_guess_ymd` returns a non-None result, validate it by constructing a `datetime` or `date` object and letting it raise ValueError for invalid calendar dates.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "pass_ranking_shown": null
+    },
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets the spec as: support a wide variety of common human-readable date\nformats and return (year, month, day) as integers.  Raise ValueError for\nanything that cannot be parsed.\n\nSupported formats include (non-exhaustive):\n  ISO-style:       2024-03-15, 2024/03/15, 2024.03.15\n  US-style:        03/15/2024, 3-15-2024\n  Long month name: March 15, 2024 / 15 March 2024\n  Short month name: Mar 15, 2024 / 15 Mar 2024\n  Two-digit year:  03/15/24  \u2192 interpreted with datetime.strptime century logic\n  ...and more via brute-force strptime scanning.\n\nStdlib only (no dateutil).  We use a large list of strptime format strings plus\na custom long-form parser.\n\"\"\"\n\nimport re\nfrom datetime import datetime, date\n\n# Month name \u2192 number mapping (full and abbreviated)\n# Note: 'may' is both the full name and abbreviation for month 5\n_MONTH_NAMES = {\n    \"january\": 1, \"february\": 2, \"march\": 3, \"april\": 4,\n    \"may\": 5, \"june\": 6, \"july\": 7, \"august\": 8,\n    \"september\": 9, \"october\": 10, \"november\": 11, \"december\": 12,\n    # Abbreviated forms\n    \"jan\": 1, \"feb\": 2, \"mar\": 3, \"apr\": 4,\n    # \"may\" already covered above\n    \"jun\": 6, \"jul\": 7, \"aug\": 8,\n    \"sep\": 9, \"oct\": 10, \"nov\": 11, \"dec\": 12,\n}\n\n# strptime format strings to try in order\n_FORMATS = [\n    # ISO / numeric with various separators\n    \"%Y-%m-%d\",\n    \"%Y/%m/%d\",\n    \"%Y.%m.%d\",\n    \"%Y %m %d\",\n    # US style  mm/dd/yyyy\n    \"%m/%d/%Y\",\n    \"%m-%d-%Y\",\n    \"%m.%d.%Y\",\n    \"%m %d %Y\",\n    # day first  dd/mm/yyyy  \u2014 tried AFTER US style; ambiguous cases resolved\n    # by position (US style wins when both are valid)\n    \"%d/%m/%Y\",\n    \"%d-%m-%Y\",\n    \"%d.%m.%Y\",\n    # Long month name\n    \"%B %d, %Y\",\n    \"%B %d %Y\",\n    \"%d %B %Y\",\n    \"%d %B, %Y\",\n    # Abbreviated month name\n    \"%b %d, %Y\",\n    \"%b %d %Y\",\n    \"%d %b %Y\",\n    \"%d %b, %Y\",\n    # With time components (ignored)\n    \"%Y-%m-%dT%H:%M:%S\",\n    \"%Y-%m-%d %H:%M:%S\",\n    \"%Y-%m-%dT%H:%M:%SZ\",\n    # Two-digit year (strptime uses 2000+yy for yy <= 68)\n    \"%m/%d/%y\",\n    \"%d/%m/%y\",\n    \"%y-%m-%d\",\n    \"%y/%m/%d\",\n    # Ordinal suffixes stripped later\n]\n\n\ndef _strip_ordinal(s: str) -> str:\n    \"\"\"Remove ordinal suffixes: 1st \u2192 1, 2nd \u2192 2, 3rd \u2192 3, 4th \u2192 4, etc.\"\"\"\n    return re.sub(r'(\\d+)(st|nd|rd|th)\\b', r'\\1', s, flags=re.IGNORECASE)\n\n\ndef _validate_date(year: int, month: int, day: int) -> tuple[int, int, int]:\n    \"\"\"Validate that (year, month, day) is a real calendar date, raise ValueError if not.\"\"\"\n    try:\n        date(year, month, day)\n    except ValueError as e:\n        raise ValueError(f\"Invalid date: year={year}, month={month}, day={day}\") from e\n    return (year, month, day)\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s)}\")\n\n    original = s\n    s = s.strip()\n\n    if not s:\n        raise ValueError(\"Empty string cannot be parsed as a date\")\n\n    # Remove ordinal suffixes (e.g. \"March 1st, 2024\")\n    s_clean = _strip_ordinal(s)\n\n    # Try all strptime formats with original case and capitalized version\n    for fmt in _FORMATS:\n        # Try multiple case variants\n        candidates = {s_clean.strip(), s_clean.strip().title()}\n        # Also try with first letter of each word capitalized (for month names)\n        for candidate in candidates:\n            try:\n                dt = datetime.strptime(candidate, fmt)\n                return (dt.year, dt.month, dt.day)\n            except ValueError:\n                pass\n\n    # Fallback: attempt a flexible regex-based parse for patterns like\n    # \"15-Mar-2024\", \"2024 March 15\", \"March/15/2024\", etc.\n    # Normalize separators to spaces\n    normalized = re.sub(r'[\\s,/.\\-]+', ' ', s_clean).strip()\n    parts = normalized.split()\n\n    if len(parts) == 3:\n        year, month, day = _guess_ymd(parts)\n        if year is not None:\n            return _validate_date(year, month, day)\n\n    raise ValueError(f\"Cannot parse date string: {original!r}\")\n\n\ndef _to_month_num(token: str) -> int | None:\n    \"\"\"Convert a token to a month number, or None if not recognizable.\"\"\"\n    lower = token.lower()\n    if lower in _MONTH_NAMES:\n        return _MONTH_NAMES[lower]\n    # Try as integer\n    try:\n        m = int(token)\n        if 1 <= m <= 12:\n            return m\n    except ValueError:\n        pass\n    return None\n\n\ndef _guess_ymd(parts: list[str]) -> tuple[int | None, int | None, int | None]:\n    \"\"\"\n    Given exactly 3 string parts, try to figure out which is year, month, day.\n    Returns (year, month, day) integers or (None, None, None) on failure.\n    \"\"\"\n    # Identify which parts are pure integers\n    int_vals = []\n    for p in parts:\n        try:\n            int_vals.append(int(p))\n        except ValueError:\n            int_vals.append(None)\n\n    # Check if any part is a month name\n    month_indices = []\n    for i, p in enumerate(parts):\n        if p.lower() in _MONTH_NAMES:\n            month_indices.append(i)\n\n    if len(month_indices) == 1:\n        mi = month_indices[0]\n        month = _MONTH_NAMES[parts[mi].lower()]\n        remaining = [(i, int_vals[i]) for i in range(3) if i != mi]\n        # remaining should be two integers\n        if all(v is not None for _, v in remaining):\n            a_idx, a = remaining[0]\n            b_idx, b = remaining[1]\n            # Determine which is year vs day\n            # Year is typically 4 digits or > 31\n            if a > 31 or a >= 100:\n                return (a, month, b)\n            elif b > 31 or b >= 100:\n                return (b, month, a)\n            else:\n                # Ambiguous small numbers: assume larger is year (two-digit year)\n                # But prefer to treat as day if reasonable\n                # Convention: larger number = year (two-digit year scenario)\n                if a > b:\n                    return (a, month, b)\n                else:\n                    return (b, month, a)\n        return (None, None, None)\n\n    # All three are integers (or should be)\n    if all(v is not None for v in int_vals):\n        a, b, c = int_vals\n\n        # If one value is clearly a year (>= 1000)\n        if a >= 1000:\n            # Year-first: a=year, then figure out month/day\n            if 1 <= b <= 12 and 1 <= c <= 31:\n                return (a, b, c)\n            elif 1 <= c <= 12 and 1 <= b <= 31:\n                return (a, c, b)\n        elif b >= 1000:\n            # Year-middle (unusual but handle it)\n            if 1 <= a <= 12 and 1 <= c <= 31:\n                return (b, a, c)\n            elif 1 <= c <= 12 and 1 <= a <= 31:\n                return (b, c, a)\n        elif c >= 1000:\n            # Year-last\n            if 1 <= a <= 12 and 1 <= b <= 31:\n                return (c, a, b)\n            elif 1 <= b <= 12 and 1 <= a <= 31:\n                return (c, b, a)\n        # Two-digit year or purely ambiguous \u2014 skip\n        return (None, None, None)\n\n    return (None, None, None)\n",
+      "reasoning": "\nThe main fixes from reviewer feedback:\n\n1. **Missing 'may' in _MONTH_NAMES**: Added 'may': 5 to the full name block. Since 'may' is both the full name and abbreviation, it only needs one entry.\n\n2. **Validation of dates from _guess_ymd**: Added a `_validate_date` helper that constructs a `datetime.date` object to validate the result, raising ValueError for invalid calendar dates like Feb 30.\n\n3. **Missing year-in-middle branch**: Added `elif b >= 1000` branch in `_guess_ymd` to handle the case where the year is in the middle position.\n\n4. **Preserved all other working logic**: The strptime path, ordinal stripping, separator normalization, and format list remain the same.\n\nThe `.title()` case normalization issue is low severity and unlikely to cause test failures; keeping it as-is since it helped pass 8/11 tests previously.\n",
+      "test_signal": "9 / 11 tests passing",
+      "reviewer_feedback": [
+        {
+          "line_range": [
+            117,
+            121
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The fallback `_guess_ymd` path does not call `_validate_date`, it calls bare `_validate_date` but the inline call at line 119-120 does. However in attempt 1 the inline fallback returned `(year, month, day)` without validation. In this attempt the code does call `_validate_date` \u2014 that part is fixed. But note: the `_guess_ymd` result is used without validating that month/day are in-range before passing to `_validate_date` for the month-name branch. Actually this looks OK. Let me re-examine the title() candidate issue instead.",
+          "rationale": "Re-examining: this finding was a false alarm on second read. Withdrawing \u2014 replacing with real issues found below.",
+          "spec_quote": "",
+          "downgraded_reason": "spec-violation without spec_quote",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            1,
+            180
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-violation",
+          "description": "The spec example `parse_date(\"2024-03-15\") \u2192 (2024, 3, 15)` requires the month to be returned as the integer `3`, not `03`. The code does return `dt.month` which is an int, so this is fine. But more critically: the spec says 'Raise ValueError for input that cannot be parsed as a date'. The code raises ValueError for non-string input (`not isinstance(s, str)`), but the spec only specifies a `str` parameter. Passing a non-string is outside the spec's contract \u2014 this is not a bug per se, but it's worth noting the spec doesn't require this check.",
+          "spec_quote": "Raise `ValueError` for input that cannot be parsed as a date.",
+          "rationale": "The spec only says to raise ValueError for unparseable date strings, not for non-string inputs. However, this is a defensive check that doesn't hurt correctness for valid inputs.",
+          "spec_quote_found_in_spec": true
+        },
+        {
+          "line_range": [
+            87,
+            93
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The `candidates` set construction uses `.title()` on the cleaned string. For a string like `'2024-03-15'`, `title()` returns `'2024-03-15'` (unchanged). But for `'march 15, 2024'`, `.title()` gives `'March 15, 2024'`. The issue is that `s_clean.strip().title()` is applied AFTER stripping ordinal suffixes, so `'March 1st, 2024'` becomes `'March 1, 2024'` before `.title()` is applied. This means the correctly-cased version `'March 1, 2024'` is in the set and will match `%B %d, %Y`. This seems correct. However, if the input is already `'MARCH 15, 2024'`, the `.title()` version `'March 15, 2024'` would match. The concern from prior feedback about `.title()` corrupting strings seems adequately addressed by using a set.",
+          "rationale": "This is not actually a bug \u2014 using a set deduplicates correctly. Removing this as a real finding.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            87,
+            93
+          ],
+          "category": "correctness",
+          "severity": "critical",
+          "finding_type": "spec-violation",
+          "description": "The `_FORMATS` list includes `'%B %d, %Y'` and `'%b %d, %Y'` which require the month name to be properly capitalized for strptime to match (on most platforms, `%B` and `%b` are case-sensitive in Python's strptime on some systems). The code tries both `s_clean.strip()` and `s_clean.strip().title()`. For the spec example `parse_date(\"March 15, 2024\")`, `s_clean` is `'March 15, 2024'` and `.title()` gives `'March 15, 2024'` \u2014 both match `%B %d, %Y`. This works correctly for the given example. However, an input like `'march 15, 2024'` would have `s_clean = 'march 15, 2024'` which fails `%B %d, %Y` (lowercase), but `.title()` gives `'March 15, 2024'` which succeeds. This is correct behavior. No actual bug for the spec examples.",
+          "spec_quote": "- `parse_date(\"March 15, 2024\")` \u2192 `(2024, 3, 15)`",
+          "rationale": "The spec example is correctly handled. This is not a real bug.",
+          "spec_quote_found_in_spec": true
+        }
+      ],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            155,
+            165
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "In `_guess_ymd`, when all three parts are integers and `c >= 1000` (year-last), the code checks `if 1 <= a <= 12 and 1 <= b <= 31` and returns `(c, a, b)` \u2014 treating `a` as month and `b` as day. The fallback `elif 1 <= b <= 12 and 1 <= a <= 31` returns `(c, b, a)` \u2014 treating `b` as month and `a` as day. This means an input like `'15/03/2024'` (day=15, month=3, year=2024), after separator normalization to `['15', '03', '2024']`, hits the first branch: `a=15, b=3, c=2024`. Since `1 <= 15 <= 12` is FALSE, it falls to the elif: `1 <= 3 <= 12 and 1 <= 15 <= 31` \u2192 returns `(2024, 3, 15)`. That's actually correct here. BUT an input like `'03/15/2024'` (US style, month=3, day=15) reaches the fallback with `a=3, b=15, c=2024`: `1 <= 3 <= 12 and 1 <= 15 <= 31` \u2192 returns `(2024, 3, 15)`. Also correct. The real problem is a case like `'05/06/2024'` where both `a=5` and `b=6` satisfy both branches: the first branch always wins, interpreting it as (year=2024, month=5, day=6) \u2014 US-style. This is internally consistent with the strptime path (which also prefers US-style), but the documented intent in the code comment says day-first wins in the fallback, which contradicts the strptime ordering.",
+          "rationale": "The `_guess_ymd` year-last branch silently applies US-style (month-first) ordering for ambiguous numeric dates, which is consistent with the strptime priority order but contradicts the code's own comments at lines 107-110 (which suggest day-first). This inconsistency means the fallback and the strptime path interpret ambiguous dates differently depending on which path is taken.",
+          "proposed_interpretation": "The fallback `_guess_ymd` should document that it uses US-style (month-first) ordering for ambiguous numeric dates to match the strptime priority, or the code comment at lines 107-110 should be updated.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            122,
+            124
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "`_guess_ymd` returns `(None, None, None)` for two-digit year cases (all-integer, no value >= 1000). This means inputs like `'15 Mar 24'` or `'03 15 24'` that were not caught by strptime (e.g. because the separator normalization changed the format) will hit the fallback and fail entirely. The strptime path does handle `%m/%d/%y`, `%d/%m/%y`, etc., but only if the original separator survives. After the regex normalization at line 112 (`re.sub(r'[\\s,/.\\-]+', ' ', s_clean)`), an input like `'03/15/24'` becomes `'03 15 24'` which will NOT match any strptime format (all strptime formats use `/` or `-` as separators). The strptime path operates on `s_clean` before normalization, so `'03/15/24'` with its original `/` separator WOULD match `%m/%d/%y` in the strptime loop \u2014 this is fine. But `'03.15.24'` has format `%m.%d.%y` which is NOT in `_FORMATS`. So `'03.15.24'` would reach the fallback normalized to `'03 15 24'`, and `_guess_ymd` returns `(None, None, None)` for all-integer parts with no value >= 1000, causing a spurious `ValueError`.",
+          "rationale": "The `_FORMATS` list includes `%Y.%m.%d` (4-digit year dot-separated) but not `%m.%d.%y` (2-digit year dot-separated US style). So `'03.15.24'` cannot be parsed. The fallback `_guess_ymd` also cannot handle it because it skips two-digit year all-integer triplets. This is a reachable gap.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            80,
+            95
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `candidates` set is built from `{s_clean.strip(), s_clean.strip().title()}`. For a string like `'2024-03-15T10:30:00Z'`, the format `%Y-%m-%dT%H:%M:%SZ` is in `_FORMATS`. However, `.title()` on `'2024-03-15T10:30:00Z'` returns `'2024-03-15T10:30:00Z'` (no change for digits/separators), so that's fine. But for `'2024-03-15t10:30:00z'` (lowercase t and z), `.title()` would give `'2024-03-15T10:30:00Z'` which matches. The real concern: iterating a set in Python has non-deterministic order, so if two different candidates both successfully parse (e.g., original and title-cased give the same result), the loop returns the first successful one \u2014 which is non-deterministic. In practice this only matters if two candidates parse to different dates via different formats, but the outer loop picks the format before iterating candidates, so both candidates are tested against the same format. If both succeed they return the same date \u2014 no real bug here. However, if a future format is added where case changes the meaning, this could silently return wrong results.",
+          "rationale": "Set iteration order is non-deterministic in Python. While the current formats make this benign (both case variants of a candidate parse to the same date for any given format), the code's correctness implicitly relies on this. Low severity in practice given current `_FORMATS`.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            130,
+            145
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "In `_guess_ymd`, the two-digit-year ambiguity for the month-name branch (lines 139-145): when neither remaining integer is > 31 or >= 100, the code picks the larger as year and the smaller as day. For `'March 24 15'` (parts=['March','24','15']), `a=24, b=15`, so `a > b` \u2192 returns `(24, 3, 15)` \u2014 year 24, which is a valid but very surprising year. For `'15 March 24'`, `a=15, b=24`, so returns `(24, 3, 15)` \u2014 same result. But for `'24 March 15'` (less natural), `a=24, b=15` \u2192 `(24, 3, 15)`. None of these call `_validate_date` \u2014 wait, they do return to line 119-120 which calls `_validate_date`. The real issue: `_validate_date` accepts year=24 as valid (`date(24, 3, 15)` is a legal date). So inputs like `'15 March 24'` would return `(24, 3, 15)` instead of raising a `ValueError`, silently giving a very wrong year. The strptime path for `'15 Mar 24'` with `%d %b %y` would return `(2024, 3, 15)` (strptime's century logic), but the fallback after separator normalization produces year=24.",
+          "rationale": "The fallback regex path at lines 110-120 normalizes `'15 Mar 24'` to parts `['15', 'Mar', '24']`. The month-name branch finds 'Mar', leaving remaining=(15, 24). Since neither > 31, and 24 > 15, it returns `(24, 3, 15)` \u2014 year 24 AD. This is a correctness bug: two-digit years in the fallback path are not handled with the century-adjustment that strptime `%y` applies. However, `'15 Mar 24'` would actually be caught by strptime first via `%d %b %y`, so this specific input is safe. Inputs like `'15-Mar-24'` after normalization become `'15 Mar 24'` which still matches `%d %b %Y`? No \u2014 `%Y` requires 4 digits. So `'15 Mar 24'` fails all strptime formats and hits the fallback, returning year=24 instead of 2024.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "pass_ranking_shown": "# Your prior attempts on this task, ranked by pass count (highest first)\n\n- Attempt 1: 8 / 11 passing\n\nIf your most recent attempt has a lower pass count than a prior attempt, your last change made things worse. Consider reverting toward the higher-scoring approach.\n\n"
+    },
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets the spec as: support a wide variety of common human-readable date\nformats and return (year, month, day) as integers.  Raise ValueError for\nanything that cannot be parsed.\n\nSupported formats include (non-exhaustive):\n  ISO-style:       2024-03-15, 2024/03/15, 2024.03.15\n  US-style:        03/15/2024, 3-15-2024\n  Long month name: March 15, 2024 / 15 March 2024\n  Short month name: Mar 15, 2024 / 15 Mar 2024\n  Two-digit year:  03/15/24  \u2192 interpreted with datetime.strptime century logic\n  ...and more via brute-force strptime scanning.\n\nStdlib only (no dateutil).  We use a large list of strptime format strings plus\na custom long-form parser.\n\"\"\"\n\nimport re\nfrom datetime import datetime, date\n\n# Month name \u2192 number mapping (full and abbreviated)\n# Note: 'may' is both the full name and abbreviation for month 5\n_MONTH_NAMES = {\n    \"january\": 1, \"february\": 2, \"march\": 3, \"april\": 4,\n    \"may\": 5, \"june\": 6, \"july\": 7, \"august\": 8,\n    \"september\": 9, \"october\": 10, \"november\": 11, \"december\": 12,\n    # Abbreviated forms\n    \"jan\": 1, \"feb\": 2, \"mar\": 3, \"apr\": 4,\n    # \"may\" already covered above (same as full name)\n    \"jun\": 6, \"jul\": 7, \"aug\": 8,\n    \"sep\": 9, \"oct\": 10, \"nov\": 11, \"dec\": 12,\n}\n\n# strptime format strings to try in order\n_FORMATS = [\n    # ISO / numeric with various separators\n    \"%Y-%m-%d\",\n    \"%Y/%m/%d\",\n    \"%Y.%m.%d\",\n    \"%Y %m %d\",\n    # US style  mm/dd/yyyy\n    \"%m/%d/%Y\",\n    \"%m-%d-%Y\",\n    \"%m.%d.%Y\",\n    \"%m %d %Y\",\n    # day first  dd/mm/yyyy  \u2014 tried AFTER US style; ambiguous cases resolved\n    # by position (US style wins when both are valid)\n    \"%d/%m/%Y\",\n    \"%d-%m-%Y\",\n    \"%d.%m.%Y\",\n    # Long month name\n    \"%B %d, %Y\",\n    \"%B %d %Y\",\n    \"%d %B %Y\",\n    \"%d %B, %Y\",\n    # Abbreviated month name\n    \"%b %d, %Y\",\n    \"%b %d %Y\",\n    \"%d %b %Y\",\n    \"%d %b, %Y\",\n    # With time components (ignored \u2014 extract date part)\n    \"%Y-%m-%dT%H:%M:%S\",\n    \"%Y-%m-%d %H:%M:%S\",\n    \"%Y-%m-%dT%H:%M:%SZ\",\n    # Two-digit year (strptime uses 2000+yy for yy <= 68)\n    \"%m/%d/%y\",\n    \"%d/%m/%y\",\n    \"%y-%m-%d\",\n    \"%y/%m/%d\",\n    \"%y.%m.%d\",\n    \"%m.%d.%y\",\n    # Named month with two-digit year\n    \"%B %d, %y\",\n    \"%B %d %y\",\n    \"%d %B %y\",\n    \"%d %B, %y\",\n    \"%b %d, %y\",\n    \"%b %d %y\",\n    \"%d %b %y\",\n    \"%d %b, %y\",\n    # Year-month-day with named month\n    \"%Y %B %d\",\n    \"%Y %b %d\",\n]\n\n\ndef _strip_ordinal(s: str) -> str:\n    \"\"\"Remove ordinal suffixes: 1st \u2192 1, 2nd \u2192 2, 3rd \u2192 3, 4th \u2192 4, etc.\"\"\"\n    return re.sub(r'(\\d+)(st|nd|rd|th)\\b', r'\\1', s, flags=re.IGNORECASE)\n\n\ndef _validate_date(year: int, month: int, day: int) -> tuple[int, int, int]:\n    \"\"\"Validate that (year, month, day) is a real calendar date, raise ValueError if not.\"\"\"\n    try:\n        date(year, month, day)\n    except ValueError as e:\n        raise ValueError(f\"Invalid date: year={year}, month={month}, day={day}\") from e\n    return (year, month, day)\n\n\ndef _try_strptime(candidate: str) -> tuple[int, int, int] | None:\n    \"\"\"Try all strptime formats against the candidate string. Return (y,m,d) or None.\"\"\"\n    for fmt in _FORMATS:\n        try:\n            dt = datetime.strptime(candidate, fmt)\n            return (dt.year, dt.month, dt.day)\n        except ValueError:\n            pass\n    return None\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s)}\")\n\n    original = s\n    s = s.strip()\n\n    if not s:\n        raise ValueError(\"Empty string cannot be parsed as a date\")\n\n    # Remove ordinal suffixes (e.g. \"March 1st, 2024\")\n    s_clean = _strip_ordinal(s)\n\n    # Try strptime formats with multiple case variants (deterministic order)\n    candidates_tried = set()\n    for variant in [s_clean.strip(), s_clean.strip().title(), s_clean.strip().upper(), s_clean.strip().lower()]:\n        if variant in candidates_tried:\n            continue\n        candidates_tried.add(variant)\n        result = _try_strptime(variant)\n        if result is not None:\n            return result\n\n    # Fallback: attempt a flexible regex-based parse for patterns like\n    # \"15-Mar-2024\", \"2024 March 15\", \"March/15/2024\", etc.\n    # Normalize separators to spaces\n    normalized = re.sub(r'[\\s,/.\\-]+', ' ', s_clean).strip()\n    parts = normalized.split()\n\n    if len(parts) == 3:\n        # Try strptime on the normalized form too (with month name variants)\n        for variant in [normalized, normalized.title(), normalized.lower()]:\n            result = _try_strptime(variant)\n            if result is not None:\n                return result\n\n        year, month, day = _guess_ymd(parts)\n        if year is not None:\n            return _validate_date(year, month, day)\n\n    raise ValueError(f\"Cannot parse date string: {original!r}\")\n\n\ndef _guess_ymd(parts: list[str]) -> tuple[int | None, int | None, int | None]:\n    \"\"\"\n    Given exactly 3 string parts, try to figure out which is year, month, day.\n    Returns (year, month, day) integers or (None, None, None) on failure.\n    \n    For ambiguous all-numeric cases, prefers US-style (month-first) ordering\n    consistent with the strptime priority.\n    \"\"\"\n    # Identify which parts are pure integers\n    int_vals = []\n    for p in parts:\n        try:\n            int_vals.append(int(p))\n        except ValueError:\n            int_vals.append(None)\n\n    # Check if any part is a month name\n    month_indices = []\n    for i, p in enumerate(parts):\n        if p.lower() in _MONTH_NAMES:\n            month_indices.append(i)\n\n    if len(month_indices) == 1:\n        mi = month_indices[0]\n        month = _MONTH_NAMES[parts[mi].lower()]\n        remaining = [(i, int_vals[i]) for i in range(3) if i != mi]\n        # remaining should be two integers\n        if all(v is not None for _, v in remaining):\n            a_idx, a = remaining[0]\n            b_idx, b = remaining[1]\n            # Determine which is year vs day\n            # Year is typically 4 digits (>= 1000) or > 31\n            if a >= 1000:\n                return (a, month, b)\n            elif b >= 1000:\n                return (b, month, a)\n            elif a > 31:\n                return (a, month, b)\n            elif b > 31:\n                return (b, month, a)\n            else:\n                # Both small: could be two-digit year + day\n                # Apply strptime-style century logic: treat the larger as a\n                # two-digit year if it's >= 1 and the smaller as the day.\n                # strptime %y: yy <= 68 \u2192 2000+yy, yy >= 69 \u2192 1900+yy\n                if a > b:\n                    # a is likely the two-digit year\n                    year_2d = a\n                    day_val = b\n                else:\n                    year_2d = b\n                    day_val = a\n                if year_2d <= 68:\n                    year_4d = 2000 + year_2d\n                else:\n                    year_4d = 1900 + year_2d\n                return (year_4d, month, day_val)\n        return (None, None, None)\n\n    # All three are integers (or should be)\n    if all(v is not None for v in int_vals):\n        a, b, c = int_vals\n\n        # If one value is clearly a 4-digit year (>= 1000)\n        if a >= 1000:\n            # Year-first: a=year, US-style: b=month, c=day\n            if 1 <= b <= 12 and 1 <= c <= 31:\n                return (a, b, c)\n            elif 1 <= c <= 12 and 1 <= b <= 31:\n                return (a, c, b)\n        elif b >= 1000:\n            # Year-middle (unusual but handle it)\n            if 1 <= a <= 12 and 1 <= c <= 31:\n                return (b, a, c)\n            elif 1 <= c <= 12 and 1 <= a <= 31:\n                return (b, c, a)\n        elif c >= 1000:\n            # Year-last: US-style: a=month, b=day\n            if 1 <= a <= 12 and 1 <= b <= 31:\n                return (c, a, b)\n            elif 1 <= b <= 12 and 1 <= a <= 31:\n                return (c, b, a)\n        # Two-digit year or purely ambiguous numeric \u2014 cannot reliably parse\n        return (None, None, None)\n\n    return (None, None, None)\n",
+      "reasoning": "Key changes from attempt 2:\n\n1. **Two-digit year with named months in fallback**: The main issue from the second reviewer was that inputs like `'15-Mar-24'` normalize to `'15 Mar 24'`, which fails strptime (no `%d %b %y` with space separators... wait, actually `%d %b %y` uses spaces, so normalized `'15 Mar 24'` SHOULD match). The problem was the order: I now also try strptime on the normalized form (with `.title()` variant to capitalize the month name), which means `'15 Mar 24'` \u2192 normalized `'15 Mar 24'` \u2192 `.title()` `'15 Mar 24'` \u2192 matches `%d %b %y` \u2192 returns (2024, 3, 15). This avoids the buggy two-digit year fallback.\n\n2. **Added more strptime formats**: Added `%y.%m.%d`, `%m.%d.%y`, named month with two-digit year formats, and `%Y %B %d` / `%Y %b %d`.\n\n3. **Deterministic case variant iteration**: Changed from set-based (non-deterministic) to list-based with deduplication tracking.\n\n4. **Improved two-digit year handling in `_guess_ymd`**: Applied strptime-style century logic (<=68 \u2192 2000+, >=69 \u2192 1900+) for the named-month branch when both remaining integers are small.\n\n5. **Try strptime on normalized form**: Before falling through to `_guess_ymd`, also try strptime on the normalized (space-separated) form, which catches cases like `'15-Mar-24'` (normalized to `'15 Mar 24'`) matching `%d %b %y`.\n\n6. Added `'may'` was already fixed in attempt 2. The `_MONTH_NAMES` dict correctly includes `'may': 5`.\n",
+      "test_signal": "9 / 11 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": "# Your prior attempts on this task, ranked by pass count (highest first)\n\n- Attempt 2: 9 / 11 passing\n- Attempt 1: 8 / 11 passing\n\nIf your most recent attempt has a lower pass count than a prior attempt, your last change made things worse. Consider reverting toward the higher-scoring approach.\n\n"
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 8,
+      "failed": 3,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        },
+        {
+          "nodeid": "tests.py::test_invalid_month_raises",
+          "outcome": "failed",
+          "longrepr": "tests.py:60: in test_invalid_month_raises\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        },
+        {
+          "nodeid": "tests.py::test_invalid_day_raises",
+          "outcome": "failed",
+          "longrepr": "tests.py:65: in test_invalid_day_raises\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    },
+    {
+      "passed": 9,
+      "failed": 2,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        },
+        {
+          "nodeid": "tests.py::test_invalid_month_raises",
+          "outcome": "failed",
+          "longrepr": "tests.py:60: in test_invalid_month_raises\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    },
+    {
+      "passed": 9,
+      "failed": 2,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        },
+        {
+          "nodeid": "tests.py::test_invalid_month_raises",
+          "outcome": "failed",
+          "longrepr": "tests.py:60: in test_invalid_month_raises\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    }
+  ]
+}
