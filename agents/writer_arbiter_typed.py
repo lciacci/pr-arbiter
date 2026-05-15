@@ -133,6 +133,12 @@ def arbitrate(code: str, spec: str, reviewer_findings: list[dict]) -> list[dict]
     for block in resp.content:
         if getattr(block, "type", None) == "tool_use" and block.name == "report_independent_findings":
             return _validate(block.input.get("findings", []), spec)
+    import sys
+    print(
+        f"writer_arbiter_typed.arbitrate: no tool_use block "
+        f"(stop_reason={getattr(resp, 'stop_reason', 'unknown')!r})",
+        file=sys.stderr,
+    )
     return []
 
 
@@ -160,18 +166,20 @@ def _normalize_for_match(text: str) -> str:
 def _validate(findings: list, spec: str) -> list[dict]:
     out: list[dict] = []
     norm_spec = _normalize_for_match(spec)
-    for f in findings:
-        if not isinstance(f, dict):
+    for raw in findings:
+        if not isinstance(raw, dict):
             continue
+        f = dict(raw)  # Shallow-copy to avoid mutating SDK-returned dicts.
         lr = f.get("line_range")
         if not (isinstance(lr, list) and len(lr) == 2 and all(isinstance(x, int) for x in lr)):
             continue
         if not all(k in f for k in ("category", "severity", "description", "rationale", "finding_type")):
             continue
-        ft = f.get("finding_type")
+        orig_ft = f.get("finding_type")
+        ft = orig_ft
         if ft not in ("spec-violation", "spec-interpretation"):
             ft = "spec-interpretation"
-            f["downgraded_reason"] = f"unknown finding_type {f.get('finding_type')!r}"
+            f["downgraded_reason"] = f"unknown finding_type {orig_ft!r}"
         sq = (f.get("spec_quote") or "").strip()
         if ft == "spec-violation" and not sq:
             ft = "spec-interpretation"

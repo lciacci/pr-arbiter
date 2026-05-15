@@ -43,12 +43,15 @@ def _load_run(arm_dir: Path, seed: int, task_id: str) -> dict | None:
 
 
 def main() -> None:
+    import sys
+
     manifest = json.loads(CORPUS_MANIFEST.read_text())
     tasks = [t["id"] for t in manifest["tasks"]]
     diff_of = {t["id"]: t["difficulty"] for t in manifest["tasks"]}
 
     # raw[arm_label][seed][task_id] = run dict
     raw: dict[str, dict[int, dict[str, dict]]] = {}
+    missing_warnings: list[str] = []
     for arm_label, _ in ARMS:
         arm_dir = ITER2_DIR / arm_label
         raw[arm_label] = {}
@@ -58,6 +61,17 @@ def main() -> None:
                 r = _load_run(arm_dir, seed, t)
                 if r is not None:
                     raw[arm_label][seed][t] = r
+            loaded = len(raw[arm_label][seed])
+            if loaded < len(tasks):
+                # Surface partial seed directories. Silent zeros would
+                # poison per-arm statistics; warn explicitly so the user
+                # can decide whether to re-run or proceed.
+                msg = (
+                    f"WARNING: {arm_label} seed{seed} loaded {loaded}/{len(tasks)} tasks. "
+                    f"Aggregate metrics for this seed are computed over the loaded subset only."
+                )
+                missing_warnings.append(msg)
+                print(msg, file=sys.stderr)
 
     aggregate: dict = {
         "schema": "phase2-iter2-v1",
@@ -71,7 +85,9 @@ def main() -> None:
         "adversarial_robustness": {},
     }
 
-    # Per-seed overall pass rate + test recall
+    # Per-seed overall pass rate + test recall. Use string seed keys so the
+    # in-memory dict matches the on-disk JSON form (json.dumps coerces int
+    # keys to strings) — downstream consumers can index either way.
     for arm_label, _ in ARMS:
         aggregate["per_seed"][arm_label] = {}
         for seed in SEEDS:
@@ -80,7 +96,7 @@ def main() -> None:
             conv = sum(1 for r in runs.values() if r["converged"])
             passed = sum(r["final_passed"] for r in runs.values())
             total = sum(r["final_total"] for r in runs.values())
-            aggregate["per_seed"][arm_label][seed] = {
+            aggregate["per_seed"][arm_label][str(seed)] = {
                 "n_tasks": n,
                 "converged": conv,
                 "pass_rate": conv / n if n else 0.0,
@@ -113,10 +129,11 @@ def main() -> None:
 
     # Pre-registered criterion for arm C
     # 1. Underspec preserved: median underspec pass rate >= arm A's median.
+    us_tasks = [t for t in tasks if diff_of[t] == "underspec"]
+
     def underspec_pass_rates(arm_label: str) -> list[float]:
         out = []
         for seed in SEEDS:
-            us_tasks = [t for t in tasks if diff_of[t] == "underspec"]
             run_set = raw[arm_label][seed]
             converged = sum(1 for t in us_tasks if run_set.get(t, {}).get("converged"))
             out.append(converged / len(us_tasks) if us_tasks else 0.0)
@@ -192,38 +209,55 @@ def main() -> None:
         },
     }
 
-    # Adversarial robustness sanity check (arm C only)
-    # Count per-finding fields. Walks through every reviewer/arbiter finding
-    # across all arm-C runs and counts:
-    #  - findings with finding_type == spec-violation (after validation)
-    #  - findings downgraded (downgraded_reason present)
-    #  - findings with spec_quote_found_in_spec == False (the bad case)
+    # Adversarial robustness sanity check (arm C only). Single pass over
+    # every reviewer + arbiter finding across all arm-C runs.
     arm_c_data = raw["C_writer_reviewer_arbiter_typed"]
     n_total_findings = 0
     n_spec_violation_validated = 0
+    n_interpretation = 0
+    n_unknown_type = 0  # finding_type missing / not in enum (should be 0 post-validation)
     n_downgraded = 0
-    n_quote_not_in_spec = 0
     n_quote_in_spec = 0
+    n_quote_not_in_spec = 0
+    contamination = 0
     per_task_breakdown: dict[str, dict] = {}
     for seed in SEEDS:
         for t in tasks:
             run = arm_c_data[seed].get(t)
             if run is None:
                 continue
-            pt = per_task_breakdown.setdefault(t, {"violations": 0, "interpretations": 0, "downgraded": 0, "quote_in_spec": 0, "quote_not_in_spec": 0})
+            pt = per_task_breakdown.setdefault(t, {
+                "violations": 0,
+                "interpretations": 0,
+                "unknown_type": 0,
+                "downgraded": 0,
+                "quote_in_spec": 0,
+                "quote_not_in_spec": 0,
+            })
             for att in run.get("history", []):
                 for f in att.get("reviewer_feedback", []) + att.get("arbiter_feedback", []):
                     n_total_findings += 1
                     ft = f.get("finding_type")
+                    qis = f.get("spec_quote_found_in_spec")
                     if "downgraded_reason" in f:
                         n_downgraded += 1
                         pt["downgraded"] += 1
                     if ft == "spec-violation":
                         n_spec_violation_validated += 1
                         pt["violations"] += 1
-                    else:
+                        # Validator should have downgraded any SV with a quote
+                        # not in spec. Surviving SV with qis=False is a leak.
+                        if qis is False:
+                            contamination += 1
+                    elif ft == "spec-interpretation":
+                        n_interpretation += 1
                         pt["interpretations"] += 1
-                    qis = f.get("spec_quote_found_in_spec")
+                    else:
+                        # finding_type missing or unrecognized post-validation.
+                        # Should not happen given the validator; tracked
+                        # explicitly rather than silently bucketed.
+                        n_unknown_type += 1
+                        pt["unknown_type"] += 1
                     if qis is True:
                         n_quote_in_spec += 1
                         pt["quote_in_spec"] += 1
@@ -231,25 +265,17 @@ def main() -> None:
                         n_quote_not_in_spec += 1
                         pt["quote_not_in_spec"] += 1
 
-    contamination = 0
-    # A validated spec-violation should have quote_found_in_spec True. If any
-    # post-validation spec-violation has False, that's contamination — but our
-    # validator already downgrades those, so this is an integrity check on the
-    # validator itself.
-    for seed in SEEDS:
-        for t in tasks:
-            run = arm_c_data[seed].get(t)
-            if run is None:
-                continue
-            for att in run.get("history", []):
-                for f in att.get("reviewer_feedback", []) + att.get("arbiter_feedback", []):
-                    if f.get("finding_type") == "spec-violation" and f.get("spec_quote_found_in_spec") is False:
-                        contamination += 1
-
     aggregate["adversarial_robustness"] = {
         "total_findings": n_total_findings,
         "spec_violations_validated": n_spec_violation_validated,
-        "spec_violation_attempts_downgraded": n_downgraded,
+        "spec_interpretations": n_interpretation,
+        "findings_with_unknown_finding_type": n_unknown_type,
+        # Count of findings with downgraded_reason set. Every downgrade
+        # originates from either a spec-violation that failed validation or
+        # an unknown finding_type, so this is the "attempted spec-violation
+        # OR unknown type, reclassified" count — name kept verbose to avoid
+        # the iter1-era mislabel.
+        "findings_downgraded_total": n_downgraded,
         "findings_with_quote_in_spec": n_quote_in_spec,
         "findings_with_quote_not_in_spec": n_quote_not_in_spec,
         "contamination_count": contamination,
@@ -257,6 +283,8 @@ def main() -> None:
             if n_spec_violation_validated else 0.0,
         "per_task_breakdown": per_task_breakdown,
     }
+    if missing_warnings:
+        aggregate["missing_data_warnings"] = missing_warnings
 
     (ITER2_DIR / "aggregate.json").write_text(json.dumps(aggregate, indent=2))
 
@@ -270,7 +298,7 @@ def main() -> None:
         ps = aggregate["per_seed"][arm_label]
         row = "  " + arm_label.ljust(40)
         for seed in SEEDS:
-            r = ps[seed]
+            r = ps[str(seed)]
             row += f"  s{seed}: {r['converged']}/{r['n_tasks']}"
         print(row)
     print()
@@ -311,17 +339,20 @@ def main() -> None:
     ar = aggregate["adversarial_robustness"]
     print(f"  total findings:                    {ar['total_findings']}")
     print(f"  validated spec-violations:         {ar['spec_violations_validated']}")
-    print(f"  attempted spec-violations downgraded: {ar['spec_violation_attempts_downgraded']}")
+    print(f"  spec-interpretations:              {ar['spec_interpretations']}")
+    print(f"  unknown finding_type (post-validation): {ar['findings_with_unknown_finding_type']}")
+    print(f"  findings downgraded (SV-attempt or unknown-type → interp): {ar['findings_downgraded_total']}")
     print(f"  quotes verified in spec:           {ar['findings_with_quote_in_spec']}")
     print(f"  quotes NOT in spec:                {ar['findings_with_quote_not_in_spec']}")
     print(f"  contamination (validated SV w/ bad quote): {ar['contamination_count']}")
     print()
     print("Per-task breakdown (arm C, summed across 3 seeds):")
-    print(f"  {'task':12s} viol  interp  downgr  q_in  q_out")
+    print(f"  {'task':12s} viol  interp  unkn  downgr  q_in  q_out")
     for t in tasks:
         pt = ar["per_task_breakdown"].get(t, {})
-        print(f"  {t:12s}  {pt.get('violations',0):3d}    {pt.get('interpretations',0):3d}     "
-              f"{pt.get('downgraded',0):3d}    {pt.get('quote_in_spec',0):3d}   {pt.get('quote_not_in_spec',0):3d}")
+        print(f"  {t:12s}  {pt.get('violations',0):3d}    {pt.get('interpretations',0):3d}    "
+              f"{pt.get('unknown_type',0):3d}     {pt.get('downgraded',0):3d}    "
+              f"{pt.get('quote_in_spec',0):3d}   {pt.get('quote_not_in_spec',0):3d}")
 
 
 if __name__ == "__main__":

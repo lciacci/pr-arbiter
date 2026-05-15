@@ -174,6 +174,17 @@ def main(
     task_filter: list[str] | None = None,
     out_root: Path | None = None,
 ) -> None:
+    """Run one arm × one seed of the iter2 variance experiment.
+
+    Note on `seed`: the Anthropic API does not expose a sampling seed
+    parameter, and this harness does not seed any local RNG (there is no
+    local stochastic component to seed). `seed` is purely a run-label
+    used to partition output directories so that three independent
+    sample-of-the-distribution runs do not overwrite each other. Default
+    temperature on the API means each call to `messages.create` draws a
+    fresh sample from the model's output distribution regardless of the
+    seed label.
+    """
     load_dotenv(find_dotenv(), override=True)
 
     cfg = _arm_config(arm)
@@ -260,7 +271,15 @@ if __name__ == "__main__":
     seed = 1
     if "--seed" in args:
         i = args.index("--seed")
-        seed = int(args[i + 1])
+        if i + 1 >= len(args):
+            print("error: --seed requires an integer value", file=sys.stderr)
+            sys.exit(2)
+        try:
+            seed = int(args[i + 1])
+        except ValueError:
+            print(f"error: --seed value must be an integer, got {args[i + 1]!r}",
+                  file=sys.stderr)
+            sys.exit(2)
         del args[i : i + 2]
     budget = 3
     remaining = []

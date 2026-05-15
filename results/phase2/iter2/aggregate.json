@@ -1108,7 +1108,9 @@
   "adversarial_robustness": {
     "total_findings": 131,
     "spec_violations_validated": 6,
-    "spec_violation_attempts_downgraded": 45,
+    "spec_interpretations": 125,
+    "findings_with_unknown_finding_type": 0,
+    "findings_downgraded_total": 45,
     "findings_with_quote_in_spec": 6,
     "findings_with_quote_not_in_spec": 30,
     "contamination_count": 0,
@@ -1117,6 +1119,7 @@
       "task_001": {
         "violations": 0,
         "interpretations": 0,
+        "unknown_type": 0,
         "downgraded": 0,
         "quote_in_spec": 0,
         "quote_not_in_spec": 0
@@ -1124,6 +1127,7 @@
       "task_002": {
         "violations": 0,
         "interpretations": 0,
+        "unknown_type": 0,
         "downgraded": 0,
         "quote_in_spec": 0,
         "quote_not_in_spec": 0
@@ -1131,6 +1135,7 @@
       "task_003": {
         "violations": 0,
         "interpretations": 0,
+        "unknown_type": 0,
         "downgraded": 0,
         "quote_in_spec": 0,
         "quote_not_in_spec": 0
@@ -1138,6 +1143,7 @@
       "task_004": {
         "violations": 0,
         "interpretations": 0,
+        "unknown_type": 0,
         "downgraded": 0,
         "quote_in_spec": 0,
         "quote_not_in_spec": 0
@@ -1145,6 +1151,7 @@
       "task_005": {
         "violations": 0,
         "interpretations": 0,
+        "unknown_type": 0,
         "downgraded": 0,
         "quote_in_spec": 0,
         "quote_not_in_spec": 0
@@ -1152,6 +1159,7 @@
       "task_006": {
         "violations": 0,
         "interpretations": 0,
+        "unknown_type": 0,
         "downgraded": 0,
         "quote_in_spec": 0,
         "quote_not_in_spec": 0
@@ -1159,6 +1167,7 @@
       "task_007": {
         "violations": 5,
         "interpretations": 28,
+        "unknown_type": 0,
         "downgraded": 22,
         "quote_in_spec": 5,
         "quote_not_in_spec": 15
@@ -1166,6 +1175,7 @@
       "task_008": {
         "violations": 0,
         "interpretations": 0,
+        "unknown_type": 0,
         "downgraded": 0,
         "quote_in_spec": 0,
         "quote_not_in_spec": 0
@@ -1173,6 +1183,7 @@
       "task_009": {
         "violations": 0,
         "interpretations": 9,
+        "unknown_type": 0,
         "downgraded": 6,
         "quote_in_spec": 0,
         "quote_not_in_spec": 6
@@ -1180,6 +1191,7 @@
       "task_010": {
         "violations": 0,
         "interpretations": 0,
+        "unknown_type": 0,
         "downgraded": 0,
         "quote_in_spec": 0,
         "quote_not_in_spec": 0
@@ -1187,6 +1199,7 @@
       "task_011": {
         "violations": 0,
         "interpretations": 0,
+        "unknown_type": 0,
         "downgraded": 0,
         "quote_in_spec": 0,
         "quote_not_in_spec": 0
@@ -1194,6 +1207,7 @@
       "task_012": {
         "violations": 1,
         "interpretations": 53,
+        "unknown_type": 0,
         "downgraded": 12,
         "quote_in_spec": 1,
         "quote_not_in_spec": 5
@@ -1201,6 +1215,7 @@
       "task_013": {
         "violations": 0,
         "interpretations": 35,
+        "unknown_type": 0,
         "downgraded": 5,
         "quote_in_spec": 0,
         "quote_not_in_spec": 4

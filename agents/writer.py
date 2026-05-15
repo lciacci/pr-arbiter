@@ -194,7 +194,11 @@ def _render_feedback(items: list[dict]) -> str:
         tag = f"{sev}/{cat}" + (f"/{ft}" if ft else "")
         out_lines.append(f"- [{tag}] {desc}")
         sq = (f.get("spec_quote") or "").strip()
-        if sq:
+        # Only show the spec quote when the critic actually has a validated
+        # spec-violation. Models occasionally attach a stray spec_quote to
+        # spec-interpretation findings; showing it would mislead the writer
+        # into treating the guess as a cited violation.
+        if sq and ft == "spec-violation":
             out_lines.append(f"  Spec quote: {sq!r}")
         pi = (f.get("proposed_interpretation") or "").strip()
         if pi:
