@@ -221,10 +221,26 @@ discrimination over the reviewer with the same context — this
 matches Phase 1's setup conceptually (same input to both passes;
 arbiter is the additional pass).
 
-Alternative for review consideration: run a tiny "retrieval
-ablation" (no retrieval vs retrieval) on a 5-PR subset to confirm
-retrieval helps both arms equally. If retrieval helps one arm
-more, attribution gets harder and the design needs revisiting.
+**Mandatory pre-experiment validation: the retrieval ablation.**
+Before any full Phase 3 run, run a no-retrieval-vs-retrieval ablation
+on a ~5-PR subset, single-agent only. The ablation must confirm that
+retrieval improves single-agent recall by a margin that is (a)
+positive and (b) similar in size to its effect on multi-agent on the
+same subset. This is a gating check, not an optional extra:
+
+- If retrieval helps both arms by a similar margin, retrieval is a
+  legitimate held-constant input and the architectural comparison is
+  clean.
+- If retrieval helps one arm substantially more than the other, the
+  retrieval component is interacting with the architecture and the
+  full-experiment attribution ("arbiter adds discrimination") is
+  contaminated. The design must be revised before proceeding —
+  e.g. by simplifying to option (b) (touched files only) or by
+  characterizing the interaction explicitly.
+
+The ablation result is logged and reported in PHASE_3_SUMMARY.md
+regardless of outcome. Skipping it, or running the full experiment
+before it passes, invalidates the architectural claim.
 
 ### 4. Schema adaptation
 
@@ -240,19 +256,46 @@ design-doc treatment:
 
 **(a) `evidence_pointer` field replacing `spec_quote`.** A
 coherence-violation finding requires citing a specific file path
-and line range that supports the claim. Validator rule: the path
-must exist in the repo at the PR's base commit AND the line range
-must be in range of the file's length. Optional stronger validator:
-the cited code must contain a token/symbol the reviewer's
-description mentions (verbatim substring, like Phase 2's spec_quote
-match). The stronger validator is more adversarially robust but
-may be too strict for real coherence claims that involve patterns
-rather than specific tokens.
+and line range that supports the claim ("convention X in
+`auth/handler.py:42`"). The validator is the load-bearing
+adversarial-robustness mechanism — it must bound how much the critic
+can assert without evidence. Three validator strictness levels:
 
-Open sub-question for review: is the verbatim-substring validator
-viable for coherence pointers, or does it need to be looser
-(e.g., the cited file is in the same module/directory as the
-described pattern)?
+- **(a1) Existence only.** The cited path exists at the PR's base
+  commit and the line range is within the file's length. Cheap,
+  deterministic, no model call. But weak: the critic can point at
+  any real file and the validator passes. A coherence-violation
+  with a real-but-irrelevant pointer survives.
+- **(a2) Verbatim substring.** (a1) plus: the cited code contains a
+  token or symbol the finding's description mentions verbatim
+  (direct analog of Phase 2's spec_quote substring match). Cheap,
+  deterministic, strongly adversarially robust. But likely too
+  strict for coherence — many real coherence claims are about
+  *patterns* ("this layer never imports from `db/` directly"),
+  not specific tokens. A correct finding whose description
+  paraphrases the pattern would fail (a2) and be wrongly downgraded.
+- **(a3) Path-exists + LLM-judged description match.** (a1) plus: a
+  separate LLM-judge call confirms the cited code semantically
+  supports the finding's description (the code at the pointer is
+  genuinely an instance of the convention/pattern/duplicate the
+  finding claims). Not deterministic; costs a model call per
+  pointer; but matches the actual shape of coherence evidence,
+  which is semantic rather than lexical.
+
+**Recommendation for review: (a3).** (a1) is too weak to bound the
+critic — it's the no-validator case in disguise. (a2) imports
+Phase 2's exact mechanism but Phase 2's mechanism worked because
+spec violations *are* lexical (a spec clause is literal text);
+coherence evidence is not. (a3) is the right shape for the domain.
+Its cost is one LLM-judge call per coherence-violation finding, and
+its non-determinism is itself a calibration target — see the
+matcher-calibration section, which covers the same judge-reliability
+problem.
+
+The (a3) judge is structurally identical to the finding-to-comment
+matcher in design question 5. Both are LLM-judged semantic
+equivalence calls. They should share a calibration protocol; do not
+treat them as two unrelated components.
 
 **(b) `finding_type` enum extended.** Phase 2 had `spec-violation`
 (quotable) vs `spec-interpretation` (judgment call). Phase 3
@@ -324,30 +367,82 @@ meaningful if blinding is enforced procedurally (random shuffle of
 findings across arms before sending to rater; arm-of-origin not
 in the rater interface).
 
+**Prose-quality confound — and why arm-label blinding does not
+fix it.** Blinding hides *which arm* produced a finding, but it
+does not hide *stylistic tells* that correlate with arm. The
+multi-agent pipeline runs an extra arbiter pass; its findings may
+be systematically longer, more hedged, more thoroughly justified,
+or simply better-written than single-agent findings — and a senior
+rater, even fully blinded to arm labels, will rate a well-argued
+finding "valid" more readily than a terse one making the identical
+substantive point. That biases the residual rating toward whichever
+arm writes better prose, which is not the architectural property
+under test. Two mitigations, pick one at design review:
+
+- **(a) Canonicalize findings before rating.** Strip each finding
+  to a normalized form before it reaches the rater: a fixed-length
+  description, the `finding_type`, the `evidence_pointer`, the
+  dimension. A separate LLM-rewrite pass rewrites every finding —
+  both arms — into one house style, removing length and
+  rhetoric as signals. Risk: the rewrite pass can itself drop or
+  distort substance; it must be validated (does the rewritten
+  finding still make the same claim? — another LLM-judge call,
+  another calibration target).
+- **(b) Paired rating.** When single-agent and multi-agent both
+  produce a finding about the same underlying issue (matched via
+  the same matcher used for maintainer comments), the rater sees
+  the pair together and rates them relative to each other, not on
+  an absolute scale. This neutralizes prose quality because both
+  members of the pair are rated in the same context. Risk: only
+  works for findings that *both* arms produced; the
+  architecturally-interesting case (multi-agent found it,
+  single-agent did not) has no pair, so paired rating must fall
+  back to (a)-style canonicalization for the unpaired residual.
+
+Recommendation for review: **(a) canonicalization as the default,
+because the unpaired residual — multi-agent-only findings — is
+exactly the population the Phase 3 result hinges on, and (b)
+cannot cover it.** Use (b) additionally on the paired subset as a
+cross-check: if canonicalized absolute ratings and paired relative
+ratings disagree on the paired subset, the canonicalization is
+leaking prose signal and must be fixed before the residual ratings
+are trusted.
+
 ### 6. Variance and sample size
 
 Phase 2's lesson: small-n single-seed produces overfit conclusions.
 
 **Sample size.** Phase 1 was small (single-digit PRs). Phase 3 for
-variance reasons needs ≥30 PRs to discriminate effect sizes near
-Phase 1's. ~50 PRs gives more headroom on cross-repo generalization
-if that's in scope.
+variance reasons needs ≥ 30 PRs to discriminate effect sizes near
+Phase 1's. Target ~40 PRs from a single repo (see below).
 
 **Seeds per arm.** Phase 2's 3 seeds was load-bearing. Phase 3 should
-match. Two arms × 3 seeds × 50 PRs = 300 reviewer-runs total per
+match. Two arms × 3 seeds × 40 PRs = 240 reviewer-runs total per
 experiment.
 
-**Single repo vs multiple repos.** Single repo controls for
-convention variance but tests generalization weakly. Multiple repos
-test generalization but introduce repo-as-confound (some repos may
-be more amenable to coherence review than others).
+**Repo scope — committed: single repo for initial Phase 3.** Single
+repo controls convention variance; multi-repo tests generalization
+but introduces repo-as-confound (some repos are more amenable to
+coherence review than others; a 2-repo split with 1 favorable repo
+would produce a misleading aggregate). The initial Phase 3 question
+is *does the coherence effect exist at all* — a structural
+existence claim. That question is answered cleanest on a single
+repo where conventions are uniform and can be fully characterized
+as part of corpus annotation. Cross-repo generalization is a
+genuine follow-up question but it is **Phase 3.1, not Phase 3**:
+running it before the existence claim is settled spends corpus
+budget hedging a question that only matters if the effect exists.
 
-Recommendation for review: **3-5 repos with ~10 PRs each.** Enough
-to test generalization, few enough that per-repo conventions can be
-characterized as part of the corpus annotation. Pre-register
-per-repo expected effect-size variance; if multi-agent helps in
-one repo and not others, that's a finding to report, not noise to
-average over.
+Repo-selection criteria for the single repo (settle at design
+review): active maintainership with substantive review culture
+(so maintainer comments are dense enough to be useful ground
+truth); a codebase large enough that cross-file coherence is a
+real concern (cross-file synthesis is the discrimination axis —
+see design question 2); a license permitting corpus
+redistribution; and a domain the senior annotator can rate
+competently. A mid-size, well-reviewed library is the archetype;
+a sprawling application monorepo or a trivial single-file utility
+are both poor fits.
 
 **Effect-size pre-registration.** Phase 2 established its noise
 floor empirically (±2 tasks across 39 runs between arms A and B).
@@ -372,6 +467,82 @@ Each of these has a different downstream implication; pre-registering
 them prevents the iter1-style post-hoc narrative that Phase 2
 caught.
 
+## Matcher calibration — load-bearing methodology
+
+Phase 3 depends on LLM-judged semantic-equivalence calls in at least
+three places:
+
+1. **Finding ↔ maintainer-comment matching** (design question 5).
+   Decides whether a reviewer finding "counts as" surfacing a
+   maintainer comment. Drives the F1 primary metric directly.
+2. **`evidence_pointer` validation** (design question 4, option a3).
+   Decides whether the code at a cited pointer genuinely supports a
+   coherence-violation claim. Drives the schema's
+   adversarial-robustness property.
+3. **Finding ↔ finding pairing** (design question 5, prose mitigation
+   b). Decides whether single-agent and multi-agent produced "the
+   same" finding for paired rating.
+
+All three are the same operation: an LLM judging whether two
+natural-language artifacts make the same claim. **This judge is not
+a neutral utility — it is a measurement instrument, and an
+uncalibrated instrument invalidates every number downstream of it.**
+A matcher that is too lenient inflates recall (spurious matches make
+both arms look like they found everything); too strict deflates it
+(real matches missed, residual set bloated, senior-rating cost
+balloons). Either way the architectural comparison is corrupted, and
+because the corruption is systematic it will not show up as seed
+variance — both arms are scored by the same bad instrument, so the
+*delta* between arms can be silently wrong without any noise signal
+to flag it. This is the Phase 2 lesson (an unvalidated component
+produces confidently-wrong aggregates) applied to the matcher.
+
+Treat matcher calibration as a pre-experiment deliverable with the
+same status as the corpus itself:
+
+**Calibration set.** Before any Phase 3 run, hand-label a calibration
+set of ~150-200 candidate pairs spanning all three matcher uses:
+finding/comment pairs, pointer/description pairs, finding/finding
+pairs. Each pair is labeled match / no-match / debatable by a human
+(the senior annotator, or a second annotator — see below). The set
+must include hard negatives: pairs that are topically similar but
+make different claims ("this should be extracted" vs "this is
+duplicated" — related, not the same), and hard positives: pairs that
+make the same claim in very different words.
+
+**Calibration metric.** Run the LLM matcher against the calibration
+set and report precision, recall, and Cohen's κ against the human
+labels. Pre-register a threshold: e.g. κ ≥ 0.7 against human labels,
+with neither precision nor recall below 0.8. The matcher prompt and
+model are tuned against the calibration set *only* — never against
+experiment data — and frozen before runs. If the threshold cannot
+be met, the matcher design is wrong and the experiment does not
+proceed; this is a hard gate, like the retrieval ablation.
+
+**Inter-annotator agreement on the calibration set itself.** The
+human labels are themselves a judgment. Have two annotators
+independently label a ~40-pair subset and report their κ. If the
+humans cannot agree (κ < 0.6), "same claim" is not crisply defined
+and the matcher *cannot* be calibrated against an incoherent target
+— the operational definition of a match must be tightened (a written
+rubric: what makes two coherence claims "the same") before either
+the humans or the LLM are scored.
+
+**Match-decision logging.** Every matcher call in the live
+experiment logs its inputs, its verdict, and its confidence/rationale.
+A post-hoc audit samples ~30 live match decisions per arm and checks
+them against a human — a drift check confirming the frozen matcher
+behaves on experiment data the way it did on the calibration set.
+Reported in PHASE_3_SUMMARY.md.
+
+**Shared instrument, shared calibration.** The three matcher uses
+share an underlying judge; they should share the calibration
+protocol and, where the prompt allows, the implementation. They do
+*not* share a threshold — pointer-validation can tolerate a
+different precision/recall balance than finding/comment matching —
+but each threshold is pre-registered and justified against the
+calibration set, not picked during the run.
+
 ## Pre-registration constraints to lock in before runs
 
 These must be settled before any Phase 3 run:
@@ -382,8 +553,18 @@ These must be settled before any Phase 3 run:
 - **Coherence dimensions enumerated.** 3-4 specific dimensions, with
   the rubric for each.
 - **Schema adaptation specified.** `evidence_pointer` validator
-  rules (path existence, line-range bounds, optional substring
-  match). `finding_type` enum locked. Render rules for each type.
+  per option a3 (path existence + line-range bounds + LLM-judged
+  description match), with the judge threshold pre-registered
+  against the calibration set. `finding_type` enum locked. Render
+  rules for each type.
+- **Matcher calibrated and frozen.** Calibration set hand-labeled;
+  matcher precision/recall/κ meets the pre-registered threshold;
+  inter-annotator κ on the calibration set itself meets its
+  threshold; matcher prompt + model frozen. Hard gate — see the
+  matcher-calibration section.
+- **Retrieval ablation passed.** No-retrieval-vs-retrieval ablation
+  on a ~5-PR subset confirms retrieval helps both arms by a similar
+  margin. Hard gate — see design question 3.
 - **Variance protocol locked.** Seeds, sample size, noise-floor
   estimation procedure. Pre-register the single-agent-only baseline
   run before multi-agent runs (matches Phase 2's sequential
@@ -392,7 +573,8 @@ These must be settled before any Phase 3 run:
   helps" and "multi-agent doesn't help" look like in data, with
   effect-size thresholds.
 - **Senior-reviewer protocol.** Rubric, blinding procedure,
-  inter-rater calibration if more than one rater.
+  prose-quality mitigation (canonicalization), inter-rater
+  calibration if more than one rater.
 - **Honest framing.** A "multi-agent doesn't help on coherence"
   outcome must be publishable. The doc and the pre-registration
   must not be structured to produce a positive result either way.
@@ -409,8 +591,11 @@ The doc is ready to implement against when design review settles:
 - Schema adaptation (4) specified concretely (`evidence_pointer`
   validator rules; `finding_type` enum committed).
 - Ground-truth comparison (5) selected with cost estimate (residual
-  set size; senior-reviewer hours required).
+  set size; senior-reviewer hours required) and prose-quality
+  mitigation chosen.
 - Sample size and variance protocol (6) committed.
+- Matcher-calibration protocol accepted and the calibration-set
+  authorship costed.
 - Pre-registration template draft exists at
   `results/phase3/phase3_preregistration.md` (template, not filled
   in — fill happens once corpus is in place).
@@ -447,36 +632,66 @@ Three constraints flow from this:
    TL;DR regardless of direction. If multi-agent doesn't help on
    coherence, that's the headline.
 
+## Deferred: mutual-triage variant
+
+Phase 1's iter3 + iter4 introduced a mutual-triage step — two critic
+voices voting KEEP/DROP on each finding before it ships — to fix the
+arbiter over-rotation failure mode for correctness findings. A natural
+question is whether mutual triage transfers to coherence review.
+
+**This is explicitly deferred, not an open question for review.** It
+is deferred to Phase 3.1 — a follow-up conditional on Phase 3's base
+result — for two reasons:
+
+1. **It is downstream of the existence question.** Mutual triage is a
+   *fix* for a *failure mode* (over-rotation). Phase 3 has not yet
+   established that multi-agent coherence review has that failure
+   mode, or any architectural effect at all. Designing a fix before
+   the base effect is measured repeats the iter1 mistake of building
+   on a single observation. If Phase 3 finds multi-agent helps on
+   coherence AND exhibits over-rotation, mutual triage becomes a
+   well-motivated Phase 3.1 experiment with a real failure to design
+   against.
+2. **It doubles the experiment.** Mutual triage is a third arm.
+   Three arms × 3 seeds × 40 PRs is 360 reviewer-runs plus the triage
+   passes — a ~50% cost increase to hedge a question that only
+   matters if the two-arm result comes back positive. Spend the
+   corpus budget on the existence claim first.
+
+Phase 3 ships two arms (single-agent, reviewer + arbiter). Mutual
+triage is named here so the deferral is on the record, not so it is
+on the Phase 3 critical path.
+
 ## Open questions for the reviewer of this doc
 
-The reviewer of this design (the human, not the agent) should settle:
+The reviewer of this design (the human, not the agent) should settle.
+The doc has made recommendations on all six numbered design questions;
+these two are the genuinely unresolved calls where the doc does not
+take a position:
 
 - **Reframe scope.** Is coherence-dimension review at scale the
-  right Phase 3, or is there a third option that's better than
-  both clarifying-questions and coherence? (E.g., adversarial
-  multi-agent — one critic plays defense, one plays offense, on
-  real PRs.)
-- **Corpus path.** Is option (d) — real PRs + maintainer comments
-  + spot senior annotations — the right primary path, or is the
-  maintainer-comment-recall ceiling too low to discriminate? If
-  too low, fall back to (c) gold-standard at smaller N.
-- **Code-generation carryover.** Should Phase 3 include any
-  code-generation tasks at all, or is the reframe a clean break
-  from Phase 2's writer-loop? Default in this doc is **clean
-  break**; revisit if there's an argument for carryover.
-- **Repo scope.** 3-5 repos × ~10 PRs each, or single repo × ~50
-  PRs? Single repo controls more; multi-repo tests generalization
-  the project's headline ultimately needs.
-- **Schema strictness.** Verbatim substring match for
-  `evidence_pointer`, or looser "same directory" rule? Strict
-  match is more adversarially robust (Phase 2's lesson); looser
-  match is more realistic for coherence findings that involve
-  patterns rather than specific tokens.
-- **Architecture variants.** Should Phase 3 include a "mutual
-  triage" variant (the Phase 1 iter3 + iter4 fix)? Phase 1 showed
-  it helped on the over-rotation failure mode for correctness
-  findings. Whether it transfers to coherence is its own question
-  and adds an arm to the experiment.
+  right Phase 3, or is there a third option better than both
+  clarifying-questions and coherence? The strongest alternative is
+  adversarial multi-agent — one critic plays defense, one plays
+  offense, on real PRs — which tests a different architectural
+  property (productive disagreement) rather than coherence as a
+  dimension. The doc recommends coherence but does not foreclose
+  this.
+- **Corpus path.** Is option (d) — real PRs + maintainer comments +
+  spot senior annotations — the right primary path, or is the
+  maintainer-comment-recall ceiling too low to discriminate the
+  arms? If a pilot on ~5 PRs shows maintainer comments cover too
+  few of the issues a senior annotator flags, fall back to (c)
+  gold-standard annotation at smaller N. This is the highest-risk
+  single decision in the design; recommend resolving it with a
+  5-PR pilot annotation before committing the full corpus budget.
+
+(Resolved in-doc, no longer open: code-generation carryover — clean
+break from the writer-loop, no carryover; repo scope — single repo
+for initial Phase 3, see design question 6; `evidence_pointer`
+strictness — option a3, path + LLM-judged description match, see
+design question 4; mutual-triage variant — deferred to Phase 3.1,
+see above.)
 
 ## Suggested timeline (no commitment)
 
@@ -484,10 +699,11 @@ Design review → finalize 6 design choices → corpus authorship
 (highest cost; bounded above by senior-reviewer availability for
 the spot-annotation subset) → infrastructure (reviewer/arbiter
 modules with `evidence_pointer` validator; RAG component; matcher
-for maintainer-comments-vs-findings; senior-rating tool) →
+for maintainer-comments-vs-findings; senior-rating tool) → matcher
+calibration + retrieval ablation (both hard gates) →
 pre-registration → runs → writeup. Realistic 6-10 weeks elapsed
-for one researcher; corpus authorship and senior-annotation are the
-long poles.
+for one researcher; corpus authorship, senior-annotation, and
+matcher calibration are the long poles.
 
 ## Deliverables when Phase 3 implementation completes
 
@@ -496,10 +712,16 @@ long poles.
 - `phase3_corpus/` — PR snapshots + maintainer comments +
   spot-annotation subset + per-repo convention summaries.
 - `agents/reviewer_coherence.py`, `agents/arbiter_coherence.py` —
-  reviewer + arbiter with `evidence_pointer` validator.
+  reviewer + arbiter with `evidence_pointer` validator (a3).
 - `agents/retrieval.py` — RAG component, fixed across arms.
-- `eval/match_findings.py` — finding-to-maintainer-comment matcher.
-- `eval/senior_rating_tool.py` — blinded rating interface.
+- `eval/match_findings.py` — LLM-judged matcher (shared by
+  finding/comment matching, `evidence_pointer` a3 validation, and
+  finding/finding pairing).
+- `results/phase3/matcher_calibration.md` — calibration set,
+  precision/recall/κ, inter-annotator κ, frozen matcher config.
+- `results/phase3/retrieval_ablation.md` — ablation result (hard gate).
+- `eval/senior_rating_tool.py` — blinded rating interface with
+  finding canonicalization.
 - `results/phase3/phase3_preregistration.md` — pre-registration.
 - `results/phase3/<arm>/seed<N>/<pr_id>.json` — per-run data.
 - `PHASE_3_SUMMARY.md` — writeup, headline finding first regardless
