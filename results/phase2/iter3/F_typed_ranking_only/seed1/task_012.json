@@ -1,0 +1,426 @@
+{
+  "task_id": "task_012",
+  "mode": "writer+reviewer+arbiter",
+  "converged": false,
+  "iterations": 3,
+  "final_passed": 10,
+  "final_total": 11,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets the spec as: support common date formats a user might type,\nreturning (year, month, day) as integers, raising ValueError on failure.\n\nSupported formats include (but are not limited to):\n  - ISO-style: YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD\n  - US-style:  MM/DD/YYYY, MM-DD-YYYY, MM.DD.YYYY\n  - Long month: \"March 15, 2024\", \"15 March 2024\", \"March 15 2024\"\n  - Short month: \"Mar 15, 2024\", \"15 Mar 2024\"\n  - Two-digit years are interpreted as 2000+ if <= 68, else 1900+\n    (same heuristic as strptime).\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n# ---------------------------------------------------------------------------\n# Month name tables\n# ---------------------------------------------------------------------------\n_MONTH_FULL = {\n    \"january\": 1, \"february\": 2, \"march\": 3, \"april\": 4,\n    \"may\": 5, \"june\": 6, \"july\": 7, \"august\": 8,\n    \"september\": 9, \"october\": 10, \"november\": 11, \"december\": 12,\n}\n_MONTH_ABBR = {\n    \"jan\": 1, \"feb\": 2, \"mar\": 3, \"apr\": 4,\n    \"may\": 5, \"jun\": 6, \"jul\": 7, \"aug\": 8,\n    \"sep\": 9, \"oct\": 10, \"nov\": 11, \"dec\": 12,\n}\n\n\ndef _month_from_name(name: str) -> int:\n    \"\"\"Convert month name (full or abbreviated) to integer 1-12.\"\"\"\n    key = name.lower()\n    if key in _MONTH_FULL:\n        return _MONTH_FULL[key]\n    if key in _MONTH_ABBR:\n        return _MONTH_ABBR[key]\n    raise ValueError(f\"Unknown month name: {name!r}\")\n\n\ndef _fix_year(y: int) -> int:\n    \"\"\"Expand two-digit year using the same rule as Python's strptime.\"\"\"\n    if y < 100:\n        return y + 2000 if y <= 68 else y + 1900\n    return y\n\n\ndef _validate(year: int, month: int, day: int) -> tuple[int, int, int]:\n    \"\"\"Validate that the combination is a real calendar date.\"\"\"\n    # Use datetime to validate; it raises ValueError on bad dates.\n    datetime(year, month, day)\n    return (year, month, day)\n\n\n# ---------------------------------------------------------------------------\n# Format patterns (tried in order)\n# ---------------------------------------------------------------------------\n# Each pattern is (regex, extractor_function)\n# The extractor receives the re.Match and returns (year, month, day) ints\n# or raises ValueError.\n\n_SEP = r\"[-/.\\s]\"          # common separators\n\n_PATTERNS = []\n\n\ndef _register(pattern):\n    \"\"\"Decorator to register a (compiled_regex, handler) pair.\"\"\"\n    def decorator(fn):\n        _PATTERNS.append((re.compile(pattern, re.IGNORECASE), fn))\n        return fn\n    return decorator\n\n\n# --- YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD ---\n@_register(r\"^\\s*(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})\\s*$\")\ndef _iso(m):\n    return _validate(_fix_year(int(m.group(1))), int(m.group(2)), int(m.group(3)))\n\n\n# --- MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY (separator must be consistent) ---\n@_register(r\"^\\s*(\\d{1,2})([-/.])(\\d{1,2})\\2(\\d{4})\\s*$\")\ndef _us_long_year(m):\n    return _validate(_fix_year(int(m.group(4))), int(m.group(1)), int(m.group(3)))\n\n\n# --- MM/DD/YY (two-digit year, consistent separator) ---\n@_register(r\"^\\s*(\\d{1,2})([-/.])(\\d{1,2})\\2(\\d{2})\\s*$\")\ndef _us_short_year(m):\n    return _validate(_fix_year(int(m.group(4))), int(m.group(1)), int(m.group(3)))\n\n\n# --- \"Month DD, YYYY\" or \"Month DD YYYY\" ---\n@_register(r\"^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{4})\\s*$\")\ndef _month_day_year(m):\n    month = _month_from_name(m.group(1))\n    return _validate(_fix_year(int(m.group(3))), month, int(m.group(2)))\n\n\n# --- \"DD Month YYYY\" ---\n@_register(r\"^\\s*(\\d{1,2})\\s+([A-Za-z]+)[,\\s]+(\\d{4})\\s*$\")\ndef _day_month_year(m):\n    month = _month_from_name(m.group(2))\n    return _validate(_fix_year(int(m.group(3))), month, int(m.group(1)))\n\n\n# --- \"Month YYYY\" (no day \u2014 treat as 1st) ... only if spec permits\n#     The spec says parse to (year, month, day) and examples all have days,\n#     so we skip this to avoid over-matching.\n\n# --- \"YYYY Month DD\" ---\n@_register(r\"^\\s*(\\d{4})\\s+([A-Za-z]+)\\s+(\\d{1,2})\\s*$\")\ndef _year_month_day(m):\n    month = _month_from_name(m.group(2))\n    return _validate(_fix_year(int(m.group(1))), month, int(m.group(3)))\n\n\n# --- \"DD Month YY\" (two-digit year) ---\n@_register(r\"^\\s*(\\d{1,2})\\s+([A-Za-z]+)[,\\s]+(\\d{2})\\s*$\")\ndef _day_month_short_year(m):\n    month = _month_from_name(m.group(2))\n    return _validate(_fix_year(int(m.group(3))), month, int(m.group(1)))\n\n\n# --- \"Month DD, YY\" (two-digit year) ---\n@_register(r\"^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{2})\\s*$\")\ndef _month_day_short_year(m):\n    month = _month_from_name(m.group(1))\n    return _validate(_fix_year(int(m.group(3))), month, int(m.group(2)))\n\n\n# ---------------------------------------------------------------------------\n# Public API\n# ---------------------------------------------------------------------------\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s).__name__!r}\")\n    for regex, handler in _PATTERNS:\n        match = regex.match(s)\n        if match:\n            try:\n                return handler(match)\n            except ValueError:\n                # Bad calendar date (e.g. Feb 30) \u2014 re-raise\n                raise\n    raise ValueError(f\"Cannot parse date string: {s!r}\")\n",
+      "reasoning": "I implemented parse_date to handle a wide variety of human-readable date formats. The approach uses a registry of regex patterns each paired with a handler function. Patterns are tried in order; the first match wins. Formats supported include ISO (YYYY-MM-DD), US numeric (MM/DD/YYYY), long/short month names in various positions, and two-digit years (expanded with the standard 68-year pivot). Calendar validity is checked by constructing a datetime object. ValueError is raised for unrecognized strings or impossible dates (e.g. Feb 30).",
+      "test_signal": "10 / 11 tests passing",
+      "reviewer_feedback": [
+        {
+          "line_range": [
+            76,
+            80
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The `_month_day_year` pattern `r\"^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{4})\\s*$\"` uses `[,\\s]+` between the day and year, which requires at least one character after the day. However, `\"March 15, 2024\"` has a comma-then-space, so that works. The deeper issue is that `[,\\s]+` could also match `\"March 15 2024\"` (space only), but could fail for unusual spacing. More critically, this pattern might over-match or under-match edge cases around comma handling, but the two spec examples should pass fine.",
+          "rationale": "The two spec examples `parse_date(\"2024-03-15\")` and `parse_date(\"March 15, 2024\")` both appear to be handled correctly by the existing patterns. No critical bug here for the stated examples.",
+          "proposed_interpretation": "The spec examples are handled correctly. This is a note that the regex `[,\\s]+` between day and year is slightly permissive but shouldn't break the stated examples.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            84,
+            88
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The `_day_month_year` pattern `r\"^\\s*(\\d{1,2})\\s+([A-Za-z]+)[,\\s]+(\\d{4})\\s*$\"` uses `[,\\s]+` to separate the month name from the year. This means `\"15 March2024\"` would not match (no separator), but `\"15 March, 2024\"` and `\"15 March 2024\"` would. That seems correct. However, `[,\\s]+` means one-or-more commas/spaces \u2014 a trailing comma like `\"15 March,2024\"` would also match. This is probably acceptable given the \"robust\" framing of the spec, but worth noting.",
+          "rationale": "The spec says 'robust to common formats', so being slightly permissive is fine. No concrete example is violated.",
+          "proposed_interpretation": "This permissiveness aligns with the spec's intent of robustness.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            55,
+            60
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `_us_long_year` pattern `r\"^\\s*(\\d{1,2})([-/.])(\\ d{1,2})\\2(\\d{4})\\s*$\"` interprets numeric-only `MM-DD-YYYY` as US format (month first). However, `YYYY-MM-DD` is matched first by the `_iso` pattern. The ambiguous case is `DD-MM-YYYY` (European) vs `MM-DD-YYYY` (US) for inputs like `\"03-15-2024\"`. The code always interprets this as MM/DD/YYYY (US), which may be wrong for European-style dates. The spec is silent on this, but if tests include European day-first numeric dates, this would fail.",
+          "rationale": "The spec only lists two examples and says 'common formats users might type'. The writer chose US-style for numeric ambiguous cases, which is a reasonable default, but the tests may expect day-first for some inputs.",
+          "proposed_interpretation": "If the test suite includes European-style DD/MM/YYYY numeric formats, those would be misinterpreted as MM/DD/YYYY. Consider whether the spec intends US or international conventions.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            109,
+            115
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `_day_month_short_year` pattern `r\"^\\s*(\\d{1,2})\\s+([A-Za-z]+)[,\\s]+(\\d{2})\\s*$\"` could match a string like `\"15 March 24\"` and interpret it as 2024-03-15, which seems correct. However, it could also inadvertently match a 2-digit number that could be either a day or a year. For example, `\"15 March 20\"` would give year=2020. This is likely intended behavior per the two-digit year heuristic, but may be surprising.",
+          "rationale": "The two-digit year heuristic follows Python strptime conventions. This is a design choice that seems consistent with the spec's intent, but could produce unexpected results for years like 2020 vs day 20.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            1,
+            150
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "The spec says 'Raise ValueError for input that cannot be parsed as a date.' The implementation raises ValueError for invalid calendar dates (e.g., Feb 30) via `_validate`, but silently re-raises and the outer loop moves on if one pattern matches but produces an invalid date. Looking at line 139-142, once a pattern matches the regex, if the handler raises ValueError (bad calendar date), it re-raises immediately without trying further patterns. This means a string that matches a regex but produces an invalid date raises ValueError rather than trying other patterns. This is likely correct behavior but worth confirming: if `\"02/30/2024\"` matches the US pattern and fails calendar validation, it raises ValueError without trying ISO interpretation. This seems correct.",
+          "rationale": "The behavior of raising immediately on a calendar validation error (rather than trying other patterns) is correct \u2014 if a string matched the regex pattern, trying other patterns wouldn't help since the date fields are clearly wrong.",
+          "proposed_interpretation": "Current behavior is reasonable: match a pattern, validate the calendar date, raise if invalid.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            76,
+            80
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The `_month_day_year` pattern `r\"^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{4})\\s*$\"` uses `[,\\s]+` between the day and year. For the input `\"March 15, 2024\"`, the portion after `15` is `, 2024`. The `[,\\s]+` quantifier is greedy and will consume `, ` (comma + space), leaving `2024` for group 3 \u2014 this works correctly. However, if the input is `\"March 15,2024\"` (no space after comma), `[,\\s]+` matches just `,` and `2024` is captured \u2014 also works. The real bug: `[,\\s]+` also matches a bare space, so `\"March 15 2024\"` (space-separated, no comma) works too. BUT if someone types `\"March 15  2024\"` (multiple spaces), `[,\\s]+` captures multiple spaces which is fine. This is actually not a bug \u2014 the spec example `\"March 15, 2024\"` \u2192 `(2024, 3, 15)` does work. Withdrawing \u2014 not a new finding.",
+          "rationale": "Re-examination confirms spec examples work. Skipping this.",
+          "spec_quote": "parse_date(\"March 15, 2024\") \u2192 (2024, 3, 15)",
+          "spec_quote_found_in_spec": false,
+          "downgraded_reason": "spec-violation with spec_quote not found in spec"
+        },
+        {
+          "line_range": [
+            55,
+            60
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The `_iso` pattern `r\"^\\s*(\\d{4})[-/.](\\ d{1,2})[-/.](\\ d{1,2})\\s*$\"` does not enforce a consistent separator. It would match `\"2024-03/15\"` (mixed separators), treating it as a valid ISO date. While the US pattern correctly uses a backreference `\\2` to enforce consistent separators, the ISO pattern does not. This is a minor correctness issue \u2014 mixed-separator ISO strings like `\"2024-03/15\"` are silently accepted rather than raising ValueError.",
+          "rationale": "The ISO pattern at line 56 uses `[-/.]` independently for each separator position, so `2024-03/15` or `2024.03-15` would match. The US pattern at line 61 correctly uses `\\2` backreference. This inconsistency means malformed inputs pass through when they should raise ValueError.",
+          "proposed_interpretation": "Enforce consistent separators in the ISO pattern using a backreference, consistent with how the US patterns are written.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            95,
+            99
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The `_year_month_day` pattern at line 96 calls `_fix_year(int(m.group(1)))` on a 4-digit year group `(\\d{4})`. Since `_fix_year` only modifies years < 100, this is a no-op for 4-digit years and is harmless. However, this pattern does NOT handle `\"2024 March 15\"` because `_fix_year` is called on the 4-digit year \u2014 actually this is fine. The real issue: this pattern is listed AFTER the two-digit-year patterns for month-name formats, so `\"2024 March 15\"` would NOT be matched by any earlier pattern and would correctly fall through to this one. No bug here.",
+          "rationale": "No new bug \u2014 withdrawing.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            56,
+            59
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The ISO pattern `r\"^\\s*(\\d{4})[-/.](\\ d{1,2})[-/.](\\ d{1,2})\\s*$\"` matches inputs where the year field has exactly 4 digits. However, calling `_fix_year` on a 4-digit year that is already >= 100 is a no-op \u2014 harmless. But note: the pattern anchors to exactly `\\d{4}` for the year, so 5+ digit years (e.g. `\"20240-03-15\"`) won't match, which is correct behaviour.",
+          "rationale": "No new bug here \u2014 withdrawing this finding.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            130,
+            142
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "When a regex pattern matches but the handler raises `ValueError` (e.g. for an invalid calendar date like Feb 30), the exception is immediately re-raised and no further patterns are tried. However, there is an edge case where the same date string could plausibly match multiple patterns. For example, `\"03-15-2024\"` matches `_us_long_year` (MM-DD-YYYY \u2192 month=3, day=15, valid). But `\"15-03-2024\"` also matches `_us_long_year` giving month=15 which fails validation \u2014 and the code immediately raises ValueError instead of falling through to try other patterns (e.g., a hypothetical DD-MM-YYYY pattern). Since the writer explicitly chose not to include DD-MM-YYYY, this is by design. No new bug.",
+          "rationale": "Withdrawing \u2014 already noted by first reviewer and is intentional design.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            76,
+            80
+          ],
+          "category": "style",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "The `_month_day_year` pattern (line 77) can match inputs where group 1 captures a non-month alphabetic string, only to fail inside `_month_from_name` with a ValueError. But since this ValueError is raised inside the handler (not from `_validate`), the `try/except` at line 139\u2013142 re-raises it immediately \u2014 the string `\"Blah 15, 2024\"` would raise ValueError without trying any remaining patterns. This is arguably correct (no other pattern would handle it), but the comment at line 141 says 'Bad calendar date (e.g. Feb 30) \u2014 re-raise', which is misleading: it also catches `_month_from_name` failures. The re-raise is still correct behaviour, but a future maintainer might introduce a bug by changing the except clause to only catch calendar errors.",
+          "rationale": "The comment at line 141 is misleading about what ValueError cases are caught and re-raised. This is a low-severity style/maintenance issue.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            100,
+            108
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "Ambiguous overlap between `_day_month_short_year` (line 101\u2013104) and `_month_day_short_year` (line 107\u2013110): both patterns match strings of the form `\"<word> <digits> <digits>\"` or `\"<digits> <word> <digits>\"`. However there is a subtle ordering bug: `_day_month_year` (4-digit year, line 85) is registered before `_day_month_short_year` (2-digit year, line 101). A string like `\"15 March 2024\"` correctly matches `_day_month_year`. But a string like `\"15 March 24\"` must fall all the way through to `_day_month_short_year`. Between these, the `_year_month_day` pattern (line 96) `r\"^\\s*(\\d{4})\\s+([A-Za-z]+)\\s+(\\d{1,2})\\s*$\"` would NOT match `\"15 March 24\"` since 15 is only 2 digits (not 4). So the ordering works correctly. No new bug.",
+          "rationale": "Withdrawing \u2014 pattern ordering is correct.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            56,
+            58
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The ISO pattern does not enforce consistent separators (uses two independent `[-/.]` character classes rather than a backreference like the US patterns). While mixed separators like `\"2024-03/15\"` are arguably invalid, the spec says to raise ValueError for unparseable input. Accepting `\"2024-03/15\"` as valid when `datetime(2024, 3, 15)` is a real date means a malformed input silently succeeds. This is a minor over-acceptance, not a crash, but worth fixing for correctness.",
+          "rationale": "Line 56 pattern `r\"^\\s*(\\d{4})[-/.](\\ d{1,2})[-/.](\\ d{1,2})\\s*$\"` uses two independent `[-/.]` groups. Compare to line 61 which uses backreference `\\2`. The ISO pattern should similarly enforce separator consistency.",
+          "proposed_interpretation": "Change ISO pattern to use a backreference: `r\"^\\s*(\\d{4})([-/.])(\\d{1,2})\\2(\\d{1,2})\\s*$\"` and adjust group indices accordingly.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "pass_ranking_shown": null
+    },
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets the spec as: support common date formats a user might type,\nreturning (year, month, day) as integers, raising ValueError on failure.\n\nSupported formats include (but are not limited to):\n  - ISO-style: YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD (consistent separator)\n  - US-style:  MM/DD/YYYY, MM-DD-YYYY, MM.DD.YYYY\n  - Long month: \"March 15, 2024\", \"15 March 2024\", \"March 15 2024\"\n  - Short month: \"Mar 15, 2024\", \"15 Mar 2024\"\n  - Two-digit years are interpreted as 2000+ if <= 68, else 1900+\n    (same heuristic as strptime).\n\nAssumptions on ambiguities:\n  - Numeric-only ambiguous dates (MM vs DD first) default to US order (month first).\n  - ISO pattern enforces consistent separators via backreference.\n  - Invalid calendar dates (e.g. Feb 30) raise ValueError.\n  - Non-string input raises ValueError.\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n# ---------------------------------------------------------------------------\n# Month name tables\n# ---------------------------------------------------------------------------\n_MONTH_FULL = {\n    \"january\": 1, \"february\": 2, \"march\": 3, \"april\": 4,\n    \"may\": 5, \"june\": 6, \"july\": 7, \"august\": 8,\n    \"september\": 9, \"october\": 10, \"november\": 11, \"december\": 12,\n}\n_MONTH_ABBR = {\n    \"jan\": 1, \"feb\": 2, \"mar\": 3, \"apr\": 4,\n    \"may\": 5, \"jun\": 6, \"jul\": 7, \"aug\": 8,\n    \"sep\": 9, \"oct\": 10, \"nov\": 11, \"dec\": 12,\n}\n\n\ndef _month_from_name(name: str) -> int:\n    \"\"\"Convert month name (full or abbreviated) to integer 1-12.\"\"\"\n    key = name.lower()\n    if key in _MONTH_FULL:\n        return _MONTH_FULL[key]\n    if key in _MONTH_ABBR:\n        return _MONTH_ABBR[key]\n    raise ValueError(f\"Unknown month name: {name!r}\")\n\n\ndef _fix_year(y: int) -> int:\n    \"\"\"Expand two-digit year using the same rule as Python's strptime.\"\"\"\n    if y < 100:\n        return y + 2000 if y <= 68 else y + 1900\n    return y\n\n\ndef _validate(year: int, month: int, day: int) -> tuple:\n    \"\"\"Validate that the combination is a real calendar date.\"\"\"\n    # Use datetime to validate; it raises ValueError on bad dates.\n    datetime(year, month, day)\n    return (year, month, day)\n\n\n# ---------------------------------------------------------------------------\n# Format patterns (tried in order)\n# ---------------------------------------------------------------------------\n# Each pattern is (regex, extractor_function)\n# The extractor receives the re.Match and returns (year, month, day) ints\n# or raises ValueError.\n\n_PATTERNS = []\n\n\ndef _register(pattern):\n    \"\"\"Decorator to register a (compiled_regex, handler) pair.\"\"\"\n    def decorator(fn):\n        _PATTERNS.append((re.compile(pattern, re.IGNORECASE), fn))\n        return fn\n    return decorator\n\n\n# --- YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD (consistent separator via backreference) ---\n@_register(r\"^\\s*(\\d{4})([-/.])(\\d{1,2})\\2(\\d{1,2})\\s*$\")\ndef _iso(m):\n    return _validate(_fix_year(int(m.group(1))), int(m.group(3)), int(m.group(4)))\n\n\n# --- MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY (separator must be consistent) ---\n@_register(r\"^\\s*(\\d{1,2})([-/.])(\\d{1,2})\\2(\\d{4})\\s*$\")\ndef _us_long_year(m):\n    return _validate(_fix_year(int(m.group(4))), int(m.group(1)), int(m.group(3)))\n\n\n# --- MM/DD/YY (two-digit year, consistent separator) ---\n@_register(r\"^\\s*(\\d{1,2})([-/.])(\\d{1,2})\\2(\\d{2})\\s*$\")\ndef _us_short_year(m):\n    return _validate(_fix_year(int(m.group(4))), int(m.group(1)), int(m.group(3)))\n\n\n# --- \"Month DD, YYYY\" or \"Month DD YYYY\" ---\n@_register(r\"^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{4})\\s*$\")\ndef _month_day_year(m):\n    month = _month_from_name(m.group(1))\n    return _validate(_fix_year(int(m.group(3))), month, int(m.group(2)))\n\n\n# --- \"DD Month YYYY\" ---\n@_register(r\"^\\s*(\\d{1,2})\\s+([A-Za-z]+)[,\\s]+(\\d{4})\\s*$\")\ndef _day_month_year(m):\n    month = _month_from_name(m.group(2))\n    return _validate(_fix_year(int(m.group(3))), month, int(m.group(1)))\n\n\n# --- \"YYYY Month DD\" ---\n@_register(r\"^\\s*(\\d{4})\\s+([A-Za-z]+)\\s+(\\d{1,2})\\s*$\")\ndef _year_month_day(m):\n    month = _month_from_name(m.group(2))\n    return _validate(_fix_year(int(m.group(1))), month, int(m.group(3)))\n\n\n# --- \"DD Month YY\" (two-digit year) ---\n@_register(r\"^\\s*(\\d{1,2})\\s+([A-Za-z]+)[,\\s]+(\\d{2})\\s*$\")\ndef _day_month_short_year(m):\n    month = _month_from_name(m.group(2))\n    return _validate(_fix_year(int(m.group(3))), month, int(m.group(1)))\n\n\n# --- \"Month DD, YY\" (two-digit year) ---\n@_register(r\"^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{2})\\s*$\")\ndef _month_day_short_year(m):\n    month = _month_from_name(m.group(1))\n    return _validate(_fix_year(int(m.group(3))), month, int(m.group(2)))\n\n\n# ---------------------------------------------------------------------------\n# Public API\n# ---------------------------------------------------------------------------\n\ndef parse_date(s: str) -> tuple:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s).__name__!r}\")\n    for regex, handler in _PATTERNS:\n        match = regex.match(s)\n        if match:\n            try:\n                return handler(match)\n            except ValueError:\n                # Re-raise: either bad calendar date (e.g. Feb 30) or\n                # unknown month name. In both cases the input is invalid.\n                raise\n    raise ValueError(f\"Cannot parse date string: {s!r}\")\n",
+      "reasoning": "The main change from attempt 1 is fixing the ISO pattern to use a backreference for consistent separators (changing from two independent `[-/.]` character classes to `([-/.])` with `\\2` backreference), and updating the group indices accordingly (year=group(1), month=group(3), day=group(4) since the separator is now group(2)).\n\nThis addresses the reviewer feedback about `\"2024-03/15\"` being silently accepted. The US patterns already used backreferences correctly.\n\nI've preserved all other patterns unchanged to avoid regressing on the 10 passing tests. The return type annotation is changed to `tuple` (without subscript) for broader Python compatibility, though both should work in modern Python.",
+      "test_signal": "10 / 11 tests passing",
+      "reviewer_feedback": [
+        {
+          "line_range": [
+            75,
+            77
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The ISO pattern now uses a backreference (`\\2`) to enforce consistent separators, but the prior attempt without the backreference also passed all spec examples. The change is harmless for the two spec examples (`2024-03-15`), but inputs like `\"2024-03/15\"` would now fail instead of being parsed. This is likely an improvement, but the spec says \"robust to common formats\" so it's worth confirming the tests don't include mixed-separator ISO strings.",
+          "rationale": "The spec says the function should be 'robust to common formats users might type.' A mixed-separator ISO string like '2024-03/15' is uncommon enough that rejecting it is probably fine, but if any test uses mixed separators in an ISO-style string, this backreference will cause a miss that the old pattern would have caught.",
+          "proposed_interpretation": "The backreference approach is probably correct; mixed separators are not a 'common format'.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            83,
+            91
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `_us_long_year` and `_us_short_year` patterns interpret numeric-only ambiguous dates as MM-DD-YYYY (US order). For inputs like `\"15-03-2024\"` (day 15, month 3), the code would return `(2024, 15, 3)` which would then fail `_validate` (month 15 is invalid) and raise ValueError. However, for `\"03-15-2024\"` this means month=3, day=15 which is valid, but `\"05-06-2024\"` would be interpreted as May 6 rather than June 5. The spec is silent on this ambiguity.",
+          "rationale": "The spec only shows `parse_date(\"2024-03-15\")` (unambiguous ISO) and `parse_date(\"March 15, 2024\")` (named month). There are no examples of purely numeric MM-DD-YYYY vs DD-MM-YYYY, so the US-first assumption may or may not match what tests expect.",
+          "proposed_interpretation": "US-order (month-first) for numeric-only dates without a 4-digit leading year is a reasonable default; the spec gives no guidance to the contrary.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            94,
+            98
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "The `_month_day_year` pattern `[,\\s]+` allows one or more commas or spaces between the day number and the year. This means `\"March 15,,2024\"` (double comma) or `\"March 15, , 2024\"` would match. Whether the spec's 'robust' framing intends this much leniency is unclear, but it is unlikely to cause test failures.",
+          "rationale": "Minor over-matching from `[,\\s]+`. The two spec examples both pass fine. Extremely unlikely to matter for tests.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            0,
+            0
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "The implementation does not attempt to use `dateutil.parser` or `datetime.strptime` with multiple format strings as a fallback. The spec says 'robust to common formats users might type' without listing all formats. The hand-rolled regex approach covers the two spec examples and many common cases, but an unrecognized-but-valid format would raise ValueError. This is probably fine given the test set is likely derived from the same examples.",
+          "rationale": "Spec says 'robust to common formats' and gives only two concrete examples. The implementation covers a broad set of formats. Unless the tests include exotic formats not listed in the module's docstring, this should be fine.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            94,
+            98
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The `_month_day_year` pattern `r'^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{4})\\s*$'` uses `[,\\s]+` between the day and year. This means a plain space is sufficient, so `\"March 15 2024\"` (no comma) matches this pattern \u2014 but the separator group consumes one or more spaces/commas. However, `\\s+` before the day already consumes whitespace, and `[,\\s]+` after the day consumes the comma+space in `\"March 15, 2024\"`. This is fine for the spec example. The real issue: since `[,\\s]+` matches one or more whitespace characters, the pattern also matches `\"March 15 2024\"` treating the space as the separator. This is likely intentional and documented. BUT: for an input like `\"March 2024\"` (no day number), it will NOT match this pattern \u2014 it could accidentally match `_year_month_day` if the year happens to be <= 4 digits... actually no, `_year_month_day` requires a leading 4-digit number. So `\"March 2024\"` will just fail. This sub-finding is benign.",
+          "rationale": "No real new bug here beyond what the first reviewer noted; this is a clarification. Withdrawing \u2014 see next finding instead.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            100,
+            104
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `_day_month_year` pattern `r'^\\s*(\\d{1,2})\\s+([A-Za-z]+)[,\\s]+(\\d{4})\\s*$'` uses `[,\\s]+` as the separator between the month name and the year. This means `\"15 March2024\"` would NOT match (no separator before year), but `\"15 March,2024\"` or `\"15 March 2024\"` would match. The `[,\\s]+` separator also means it will match `\"15 March , 2024\"` (comma+spaces). More importantly: if someone writes `\"15 March, 2024\"`, it matches correctly. However the `[,\\s]+` greedily consumes the comma AND the space, so group 3 correctly captures `\"2024\"`. This seems fine.",
+          "rationale": "No critical bug found here. Withdrawing.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            116,
+            120
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The `_month_day_short_year` pattern (two-digit year, `r'^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{2})\\s*$'`) will also match inputs with a 4-digit year, because the `_us_long_year` and `_us_short_year` patterns only match numeric dates, and `_month_day_year` requires exactly `\\d{4}`. But wait \u2014 this pattern matches `\\d{2}` for the year, which would also match the last two digits of `\"March 15, 2024\"` if the `_month_day_year` pattern wasn't tried first. Since `_month_day_year` is registered before `_month_day_short_year`, `\"March 15, 2024\"` correctly matches the 4-digit pattern first. Order dependency is intentional and correct here. No bug.",
+          "rationale": "Withdrawing \u2014 no issue.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            55,
+            61
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "`_fix_year` is called on the year in `_iso`, which means 4-digit years like `2024` also pass through `_fix_year`. For a 4-digit year, `_fix_year` returns it unchanged (since `y < 100` is False). However, `_iso` calls `_fix_year(int(m.group(1)))` where group(1) is already constrained to `\\d{4}`, so `_fix_year` on a 4-digit year is always a no-op. No bug, just slightly redundant.",
+          "rationale": "Withdrawing \u2014 no actual bug.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            83,
+            91
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The `_us_long_year` pattern requires exactly `\\d{4}` for the year, and `_us_short_year` requires exactly `\\d{2}`. An input like `\"3/15/24\"` (common US short format with 1-digit month) correctly matches `_us_short_year`. An input like `\"3/15/2024\"` correctly matches `_us_long_year`. However, an input like `\"3/5/2024\"` (single-digit month AND single-digit day) also matches `_us_long_year` \u2014 this is correct. No bug here.",
+          "rationale": "Withdrawing \u2014 no issue.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            75,
+            80
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The ISO pattern `r'^\\s*(\\d{4})([-/.])(\\ d{1,2})\\2(\\d{1,2})\\s*$'` will match a year like `\"0069-01-01\"` and `_fix_year` is called, but since 69 < 100 and the year IS 4-digit (0069), `_fix_year` will NOT add 2000 \u2014 wait, `int(\"0069\")` is 69 which IS less than 100, so `_fix_year(69)` returns `69 + 1900 = 1969` instead of `69`. A year `0069` would be misinterpreted as `1969`. This is a correctness bug for years 1\u201399 CE expressed with leading zeros in ISO format.",
+          "rationale": "The ISO pattern uses `\\d{4}` which matches `\"0069\"`, giving `int(\"0069\") == 69 < 100`, so `_fix_year` applies the two-digit heuristic and returns `1969` instead of the correct year 69 CE. This is a real bug for historical dates expressed with 4-digit zero-padded years below 100.",
+          "spec_quote": "Parse a human-readable date string into a (year, month, day) tuple.",
+          "spec_quote_found_in_spec": false,
+          "downgraded_reason": "spec-violation with spec_quote not found in spec"
+        },
+        {
+          "line_range": [
+            110,
+            114
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `_year_month_day` pattern `r'^\\s*(\\d{4})\\s+([A-Za-z]+)\\s+(\\d{1,2})\\s*$'` passes the year through `_fix_year`. Since it requires `\\d{4}`, the year integer can still be < 100 if zero-padded (e.g., `\"0050 March 15\"` gives year=50, then `_fix_year(50)` returns 1950). Same issue as noted above for ISO pattern.",
+          "rationale": "Same zero-padded 4-digit year issue as in `_iso`. `\\d{4}` does not guarantee year >= 100.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            83,
+            91
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `_us_long_year` pattern `r'^\\s*(\\d{1,2})([-/.])(\\d{1,2})\\2(\\d{4})\\s*$'` also calls `_fix_year` on a `\\d{4}` year group (group 4). Same zero-padded year bug: `\"3/15/0050\"` would give `int(\"0050\") == 50`, and `_fix_year(50)` returns `1950`. This is the same pattern across all handlers that accept 4-digit years but call `_fix_year` unconditionally.",
+          "rationale": "The `_fix_year` function should only be applied to genuinely 2-digit year captures. Applying it to a group matched by `\\d{4}` is incorrect when the value happens to be < 100 due to leading zeros.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            94,
+            98
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `_month_day_year` pattern `r'^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{4})\\s*$'` \u2014 the separator `[,\\s]+` between day and year means it also matches strings like `\"March15, 2024\"` (no space between month and day)? No \u2014 `\\s+` before group 2 requires at least one whitespace. But more subtly: `[,\\s]+` after group 2 requires at least one comma or space. So `\"March 15,2024\"` (no space after comma) would also match \u2014 group 3 captures `\"2024\"`. That's fine. However, `\"March 152024\"` would NOT match since `[,\\s]+` requires at least one separator char. So the separator enforcement is correct.",
+          "rationale": "Withdrawing \u2014 no bug found.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            55,
+            61
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "`_fix_year` is not applied to the two-digit year patterns consistently: the `_day_month_short_year` and `_month_day_short_year` patterns (lines 106-114 and 116-120) correctly apply `_fix_year` to 2-digit years. But ALL handlers call `_fix_year` even for 4-digit year captures (from `\\d{4}` groups). For normal inputs (years 100\u20139999), `_fix_year` is a no-op. The bug only manifests for zero-padded years like `\"0050\"`. This is an edge case unlikely to appear in tests.",
+          "rationale": "Consolidating the zero-padded 4-digit year findings. The actual risk for test failure is low given the spec examples use 4-digit years well above 100.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "pass_ranking_shown": "# Your prior attempts on this task, ranked by pass count (highest first)\n\n- Attempt 1: 10 / 11 passing\n\nIf your most recent attempt has a lower pass count than a prior attempt, your last change made things worse. Consider reverting toward the higher-scoring approach.\n\n"
+    },
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets the spec as: support common date formats a user might type,\nreturning (year, month, day) as integers, raising ValueError on failure.\n\nSupported formats include (but are not limited to):\n  - ISO-style: YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD (consistent separator)\n  - US-style:  MM/DD/YYYY, MM-DD-YYYY, MM.DD.YYYY\n  - Long month: \"March 15, 2024\", \"15 March 2024\", \"March 15 2024\"\n  - Short month: \"Mar 15, 2024\", \"15 Mar 2024\"\n  - Two-digit years are interpreted as 2000+ if <= 68, else 1900+\n    (same heuristic as strptime).\n\nAssumptions on ambiguities:\n  - Numeric-only ambiguous dates (MM vs DD first) default to US order (month first).\n  - ISO pattern enforces consistent separators via backreference.\n  - Invalid calendar dates (e.g. Feb 30) raise ValueError.\n  - Non-string input raises ValueError.\n  - _fix_year is only applied to genuinely 2-digit year captures; 4-digit\n    year captures (from \\\\d{4}) are used as-is to avoid misinterpreting\n    zero-padded historical years like \"0050\".\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n# ---------------------------------------------------------------------------\n# Month name tables\n# ---------------------------------------------------------------------------\n_MONTH_FULL = {\n    \"january\": 1, \"february\": 2, \"march\": 3, \"april\": 4,\n    \"may\": 5, \"june\": 6, \"july\": 7, \"august\": 8,\n    \"september\": 9, \"october\": 10, \"november\": 11, \"december\": 12,\n}\n_MONTH_ABBR = {\n    \"jan\": 1, \"feb\": 2, \"mar\": 3, \"apr\": 4,\n    \"may\": 5, \"jun\": 6, \"jul\": 7, \"aug\": 8,\n    \"sep\": 9, \"oct\": 10, \"nov\": 11, \"dec\": 12,\n}\n\n\ndef _month_from_name(name: str) -> int:\n    \"\"\"Convert month name (full or abbreviated) to integer 1-12.\"\"\"\n    key = name.lower()\n    if key in _MONTH_FULL:\n        return _MONTH_FULL[key]\n    if key in _MONTH_ABBR:\n        return _MONTH_ABBR[key]\n    raise ValueError(f\"Unknown month name: {name!r}\")\n\n\ndef _fix_year(y: int) -> int:\n    \"\"\"Expand two-digit year using the same rule as Python's strptime.\"\"\"\n    if y < 100:\n        return y + 2000 if y <= 68 else y + 1900\n    return y\n\n\ndef _validate(year: int, month: int, day: int) -> tuple:\n    \"\"\"Validate that the combination is a real calendar date.\"\"\"\n    # Use datetime to validate; it raises ValueError on bad dates.\n    datetime(year, month, day)\n    return (year, month, day)\n\n\n# ---------------------------------------------------------------------------\n# Format patterns (tried in order)\n# ---------------------------------------------------------------------------\n# Each pattern is (regex, extractor_function)\n# The extractor receives the re.Match and returns (year, month, day) ints\n# or raises ValueError.\n\n_PATTERNS = []\n\n\ndef _register(pattern):\n    \"\"\"Decorator to register a (compiled_regex, handler) pair.\"\"\"\n    def decorator(fn):\n        _PATTERNS.append((re.compile(pattern, re.IGNORECASE), fn))\n        return fn\n    return decorator\n\n\n# --- YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD (consistent separator via backreference) ---\n# Group 1: year (4 digits), Group 2: separator, Group 3: month, Group 4: day\n@_register(r\"^\\s*(\\d{4})([-/.])(\\d{1,2})\\2(\\d{1,2})\\s*$\")\ndef _iso(m):\n    # Do NOT apply _fix_year to 4-digit year captures\n    return _validate(int(m.group(1)), int(m.group(3)), int(m.group(4)))\n\n\n# --- MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY (separator must be consistent) ---\n@_register(r\"^\\s*(\\d{1,2})([-/.])(\\d{1,2})\\2(\\d{4})\\s*$\")\ndef _us_long_year(m):\n    # Do NOT apply _fix_year to 4-digit year captures\n    return _validate(int(m.group(4)), int(m.group(1)), int(m.group(3)))\n\n\n# --- MM/DD/YY (two-digit year, consistent separator) ---\n@_register(r\"^\\s*(\\d{1,2})([-/.])(\\d{1,2})\\2(\\d{2})\\s*$\")\ndef _us_short_year(m):\n    return _validate(_fix_year(int(m.group(4))), int(m.group(1)), int(m.group(3)))\n\n\n# --- \"Month DD, YYYY\" or \"Month DD YYYY\" ---\n@_register(r\"^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{4})\\s*$\")\ndef _month_day_year(m):\n    month = _month_from_name(m.group(1))\n    return _validate(int(m.group(3)), month, int(m.group(2)))\n\n\n# --- \"DD Month YYYY\" ---\n@_register(r\"^\\s*(\\d{1,2})\\s+([A-Za-z]+)[,\\s]+(\\d{4})\\s*$\")\ndef _day_month_year(m):\n    month = _month_from_name(m.group(2))\n    return _validate(int(m.group(3)), month, int(m.group(1)))\n\n\n# --- \"YYYY Month DD\" ---\n@_register(r\"^\\s*(\\d{4})\\s+([A-Za-z]+)\\s+(\\d{1,2})\\s*$\")\ndef _year_month_day(m):\n    month = _month_from_name(m.group(2))\n    return _validate(int(m.group(1)), month, int(m.group(3)))\n\n\n# --- \"DD Month YY\" (two-digit year) ---\n@_register(r\"^\\s*(\\d{1,2})\\s+([A-Za-z]+)[,\\s]+(\\d{2})\\s*$\")\ndef _day_month_short_year(m):\n    month = _month_from_name(m.group(2))\n    return _validate(_fix_year(int(m.group(3))), month, int(m.group(1)))\n\n\n# --- \"Month DD, YY\" (two-digit year) ---\n@_register(r\"^\\s*([A-Za-z]+)\\s+(\\d{1,2})[,\\s]+(\\d{2})\\s*$\")\ndef _month_day_short_year(m):\n    month = _month_from_name(m.group(1))\n    return _validate(_fix_year(int(m.group(3))), month, int(m.group(2)))\n\n\n# ---------------------------------------------------------------------------\n# Public API\n# ---------------------------------------------------------------------------\n\ndef parse_date(s: str) -> tuple:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s).__name__!r}\")\n    for regex, handler in _PATTERNS:\n        match = regex.match(s)\n        if match:\n            try:\n                return handler(match)\n            except ValueError:\n                # Re-raise: either bad calendar date (e.g. Feb 30),\n                # unknown month name, or other invalid date component.\n                raise\n    raise ValueError(f\"Cannot parse date string: {s!r}\")\n",
+      "reasoning": "The main changes from attempt 2:\n1. Removed `_fix_year` from all 4-digit year handlers (`_iso`, `_us_long_year`, `_month_day_year`, `_day_month_year`, `_year_month_day`). These patterns match `\\d{4}` for the year, so we use `int(m.group(...))` directly. This fixes the zero-padded historical year bug (e.g., \"0069\" \u2192 69 \u2192 wrongly becoming 1969).\n2. The two-digit year handlers (`_us_short_year`, `_day_month_short_year`, `_month_day_short_year`) still apply `_fix_year` since they genuinely capture 2-digit years.\n3. ISO pattern keeps the backreference for consistent separators (from attempt 2).\n4. Everything else is preserved from attempt 2 which was at 10/11.\n\nThe one failing test is still unknown, but the reviewers pointed out the zero-padded year issue consistently across both attempts. The other suggestions were mostly minor or withdrew themselves. This change is targeted and shouldn't break any previously passing tests.",
+      "test_signal": "10 / 11 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": "# Your prior attempts on this task, ranked by pass count (highest first)\n\n- Attempt 1: 10 / 11 passing\n- Attempt 2: 10 / 11 passing\n\nIf your most recent attempt has a lower pass count than a prior attempt, your last change made things worse. Consider reverting toward the higher-scoring approach.\n\n"
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 10,
+      "failed": 1,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    },
+    {
+      "passed": 10,
+      "failed": 1,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    },
+    {
+      "passed": 10,
+      "failed": 1,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    }
+  ]
+}
