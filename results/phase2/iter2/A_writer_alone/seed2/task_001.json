@@ -1,0 +1,31 @@
+{
+  "task_id": "task_001",
+  "mode": "writer-alone",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 13,
+  "final_total": 13,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "def parse_query_string(qs: str) -> dict[str, list[str]]:\n    \"\"\"\n    Parse a URL query string into a dict mapping each key to a list of its values.\n    \n    Handles:\n    - Multiple values per key (collected in order)\n    - Empty values (\"a=\" -> {\"a\": [\"\"]})\n    - Keys without \"=\" treated as having empty-string value (\"flag\" -> {\"flag\": [\"\"]})\n    - Empty input -> {}\n    - Percent-encoded characters decoded\n    - \"+\" decoded to space (form-urlencoded behavior)\n    - Stray \"&\" characters ignored\n    \"\"\"\n    if not qs:\n        return {}\n    \n    result: dict[str, list[str]] = {}\n    \n    # Split by \"&\" and ignore empty parts (handles leading, trailing, consecutive &)\n    pairs = [pair for pair in qs.split(\"&\") if pair]\n    \n    for pair in pairs:\n        if \"=\" in pair:\n            key, _, value = pair.partition(\"=\")\n        else:\n            key = pair\n            value = \"\"\n        \n        # Decode percent-encoding and \"+\" -> space\n        # Replace \"+\" with \"%20\" before percent-decoding, but only in value\n        # Actually, \"+\" should be treated as space in both key and value for form-urlencoded\n        # The spec only mentions \"+\" in values, but we'll handle it consistently\n        key = _decode(key)\n        value = _decode(value)\n        \n        if key not in result:\n            result[key] = []\n        result[key].append(value)\n    \n    return result\n\n\ndef _decode(s: str) -> str:\n    \"\"\"Decode percent-encoded characters and '+' as space.\"\"\"\n    # Replace '+' with space first, then handle percent-encoding\n    # We do manual decoding to avoid importing urllib.parse (though it's allowed)\n    from urllib.parse import unquote_plus\n    return unquote_plus(s)\n",
+      "reasoning": "The spec asks for a query string parser that handles multiple values per key, empty values, keys without \"=\", percent-encoding, \"+\" as space, and stray \"&\" characters. I'll use urllib.parse.unquote_plus for the decoding since it's explicitly allowed and handles both percent-encoding and \"+\" -> space conversion. The logic is straightforward: split by \"&\", ignore empty parts, split each pair by the first \"=\", and collect values per key.",
+      "test_signal": "13 / 13 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 13,
+      "failed": 0,
+      "errors": 0,
+      "total": 13,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

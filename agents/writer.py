@@ -32,6 +32,19 @@ Rules:
 - Return the COMPLETE module via the submit_solution tool. No fragments, no diffs — the full file. Each attempt overwrites the prior one in the sandbox."""
 
 
+# Arm C extension used in Phase 2 iter2: tells the writer how to weight
+# reviewer/arbiter findings tagged with finding_type. Appended to
+# WRITER_SYSTEM via the extra_system kwarg on write().
+ARM_C_TYPED_FINDINGS_GUIDANCE = """## Reviewer findings: handling finding_type
+
+Reviewer and second-pass-reviewer findings in this run are tagged with a `finding_type` field. Two values are possible:
+
+- `spec-violation` — the finding cites a specific spec clause that your code contradicts. The reviewer includes a `Spec quote` line copying the spec text verbatim. Address these. They are bugs.
+- `spec-interpretation` — the spec is silent or ambiguous on this point and the reviewer is making a judgment call about what the spec probably means. If your current code has already chosen an interpretation, do not change it solely because the reviewer chose a different one. Only adopt the reviewer's interpretation if you do not yet have one, or yours has produced test failures (pass count dropped), or you on reflection agree the spec implies the reviewer's interpretation more naturally than yours.
+
+Severity is orthogonal to finding_type. A high-severity spec-interpretation is the reviewer saying "I really think the spec means X" — still a judgment call, still not a violation. Weight it accordingly."""
+
+
 SUBMIT_TOOL = {
     "name": "submit_solution",
     "description": "Submit the complete Python module that satisfies the spec.",
@@ -79,18 +92,27 @@ def _client() -> Anthropic:
     return _CLIENT
 
 
-def write(spec: str, history: list[Attempt] | None = None, task_id: str = "") -> WriterOutput:
+def write(
+    spec: str,
+    history: list[Attempt] | None = None,
+    task_id: str = "",
+    extra_system: str = "",
+) -> WriterOutput:
     """Run the writer agent. Returns full module source + reasoning.
 
     :param spec: task spec.md contents.
     :param history: prior attempts in order. Latest is most recent.
     :param task_id: for logging only; not shown to the agent.
+    :param extra_system: appended to the writer system prompt. Used by arm C
+        in Phase 2 iter2 to add finding-type handling guidance without
+        touching the default prompt.
     """
     user_msg = _format_user_message(spec, history or [])
+    system = WRITER_SYSTEM + (("\n\n" + extra_system) if extra_system else "")
     resp = _client().messages.create(
         model=MODEL,
         max_tokens=8192,
-        system=WRITER_SYSTEM,
+        system=system,
         tools=[SUBMIT_TOOL],
         tool_choice={"type": "tool", "name": "submit_solution"},
         messages=[{"role": "user", "content": user_msg}],
@@ -155,14 +177,32 @@ def _format_user_message(spec: str, history: list[Attempt]) -> str:
 
 
 def _render_feedback(items: list[dict]) -> str:
-    """Render feedback as terse bullets. Keeps writer context lean."""
+    """Render feedback as terse bullets. Keeps writer context lean.
+
+    When a finding has the iter2 typed-schema fields (finding_type,
+    spec_quote, proposed_interpretation) they are rendered inline so the
+    writer can weight findings differently. v1 findings without these
+    fields render unchanged.
+    """
     out_lines = []
     for f in items:
         sev = f.get("severity", "?")
         cat = f.get("category", "?")
+        ft = f.get("finding_type")
         desc = f.get("description", "").strip()
         rat = f.get("rationale", "").strip()
-        out_lines.append(f"- [{sev}/{cat}] {desc}")
+        tag = f"{sev}/{cat}" + (f"/{ft}" if ft else "")
+        out_lines.append(f"- [{tag}] {desc}")
+        sq = (f.get("spec_quote") or "").strip()
+        # Only show the spec quote when the critic actually has a validated
+        # spec-violation. Models occasionally attach a stray spec_quote to
+        # spec-interpretation findings; showing it would mislead the writer
+        # into treating the guess as a cited violation.
+        if sq and ft == "spec-violation":
+            out_lines.append(f"  Spec quote: {sq!r}")
+        pi = (f.get("proposed_interpretation") or "").strip()
+        if pi:
+            out_lines.append(f"  Proposed interpretation: {pi}")
         if rat:
             out_lines.append(f"  Why: {rat}")
     return "\n".join(out_lines) + "\n"

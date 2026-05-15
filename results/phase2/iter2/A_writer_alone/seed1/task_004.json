@@ -1,0 +1,31 @@
+{
+  "task_id": "task_004",
+  "mode": "writer-alone",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 14,
+  "final_total": 14,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "def flatten(items: list, depth: int = -1) -> list:\n    \"\"\"\n    Flatten a nested list up to `depth` levels.\n    \n    depth=-1: fully flatten (unlimited recursion)\n    depth=0: return shallow copy (no flattening)\n    depth=k: flatten up to k levels deep\n    \n    Only `list` instances are expanded; tuples, strings, dicts, etc. are atomic.\n    \"\"\"\n    result = []\n    for item in items:\n        if isinstance(item, list) and depth != 0:\n            # Recurse with depth-1 if depth > 0, or keep -1 for unlimited\n            next_depth = depth - 1 if depth > 0 else -1\n            result.extend(flatten(item, next_depth))\n        else:\n            result.append(item)\n    return result\n",
+      "reasoning": "The spec is straightforward. I implement a recursive flatten that only expands `list` instances. When depth=0, no flattening occurs (return shallow copy). When depth=-1, recurse fully. When depth=k>0, decrement depth by 1 at each level. The key insight is that only `list` is expanded \u2014 strings, tuples, dicts, etc. are all treated as atomic values.",
+      "test_signal": "14 / 14 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 14,
+      "failed": 0,
+      "errors": 0,
+      "total": 14,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

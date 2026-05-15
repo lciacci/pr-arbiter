@@ -46,6 +46,7 @@ def run_task(
     budget: int = 3,
     reviewer_fn=None,
     arbiter_fn=None,
+    writer_extra_system: str = "",
 ) -> TaskRun:
     """Run the writer loop on a single task.
 
@@ -57,6 +58,8 @@ def run_task(
         History is included so reviewer can spot regressions. Optional.
     :param arbiter_fn: callable(code: str, spec: str, reviewer_findings: list[dict]) -> list[dict].
         NO history — arbiter is the independent second pass. Optional.
+    :param writer_extra_system: appended to the writer's system prompt.
+        Arm C uses this to add finding-type handling guidance.
     """
     spec = (CORPUS_DIR / task_id / "spec.md").read_text()
     history: list[Attempt] = []
@@ -64,7 +67,7 @@ def run_task(
 
     for it in range(1, budget + 1):
         try:
-            out = write(spec, history=history, task_id=task_id)
+            out = write(spec, history=history, task_id=task_id, extra_system=writer_extra_system)
         except Exception as e:
             return TaskRun(
                 task_id=task_id,

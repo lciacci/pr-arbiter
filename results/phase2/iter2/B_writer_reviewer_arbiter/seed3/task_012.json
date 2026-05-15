@@ -1,0 +1,211 @@
+{
+  "task_id": "task_012",
+  "mode": "writer+reviewer+arbiter",
+  "converged": false,
+  "iterations": 3,
+  "final_passed": 10,
+  "final_total": 11,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets common human-readable date formats and returns (year, month, day).\nRaises ValueError for unparseable input.\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n\n# Formats to try with strptime (ordered from most specific to least)\n_STRPTIME_FORMATS = [\n    # ISO / numeric variants\n    \"%Y-%m-%d\",\n    \"%Y/%m/%d\",\n    \"%Y.%m.%d\",\n    \"%d-%m-%Y\",\n    \"%d/%m/%Y\",\n    \"%d.%m.%Y\",\n    \"%m-%d-%Y\",\n    \"%m/%d/%Y\",\n    \"%m.%d.%Y\",\n    # Month name, full\n    \"%B %d, %Y\",\n    \"%B %d %Y\",\n    \"%d %B %Y\",\n    \"%d %B, %Y\",\n    \"%B %Y %d\",\n    # Month name, abbreviated\n    \"%b %d, %Y\",\n    \"%b %d %Y\",\n    \"%d %b %Y\",\n    \"%d %b, %Y\",\n    \"%b %Y %d\",\n    # With weekday prefix (ignored by strptime)\n    \"%A, %B %d, %Y\",\n    \"%A, %b %d, %Y\",\n    # Two-digit year\n    \"%y-%m-%d\",\n    \"%y/%m/%d\",\n    \"%m/%d/%y\",\n    \"%d/%m/%y\",\n]\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\n\n    Supports common formats such as:\n      - ISO 8601: \"2024-03-15\"\n      - Long form: \"March 15, 2024\"\n      - Short month: \"Mar 15, 2024\"\n      - Various separators: \"/\", \"-\", \".\"\n      - Day-first and month-first numeric variants\n\n    Raises ValueError if the string cannot be parsed.\n    \"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s).__name__!r}\")\n\n    s = s.strip()\n    if not s:\n        raise ValueError(\"Empty date string\")\n\n    for fmt in _STRPTIME_FORMATS:\n        try:\n            dt = datetime.strptime(s, fmt)\n            return (dt.year, dt.month, dt.day)\n        except ValueError:\n            continue\n\n    raise ValueError(f\"Unable to parse date string: {s!r}\")\n",
+      "reasoning": "\nThe spec asks for a function that parses common human-readable date strings into (year, month, day) tuples and raises ValueError for unparseable input. The two concrete examples given are \"2024-03-15\" \u2192 (2024, 3, 15) and \"March 15, 2024\" \u2192 (2024, 3, 15). I implement this by trying a list of strptime format strings in a sensible order, covering ISO, numeric variants with different separators, full and abbreviated month names, day-first and month-first orderings, and two-digit year variants. If none match, a ValueError is raised.\n",
+      "test_signal": "9 / 11 tests passing",
+      "reviewer_feedback": [
+        {
+          "line_range": [
+            13,
+            35
+          ],
+          "category": "spec-ambiguity",
+          "severity": "medium",
+          "description": "Ambiguous ordering between day-first and month-first numeric formats may produce wrong results for dates where both interpretations are valid (e.g., '03-05-2024' could be March 5 or May 3 depending on which format wins).",
+          "rationale": "The spec only gives two concrete examples, both unambiguous. The writer has listed '%d-%m-%Y' before '%m-%d-%Y', meaning '03-05-2024' would be parsed as May 3, not March 5. There is no spec guidance on which convention to prefer. If the tests assume US-style month-first for ambiguous numeric dates, this ordering would fail. The writer should consider whether the test suite has an opinion on ambiguous numeric dates and adjust ordering or document the assumption clearly."
+        },
+        {
+          "line_range": [
+            13,
+            35
+          ],
+          "category": "spec-ambiguity",
+          "severity": "medium",
+          "description": "Two-digit year handling is underspecified: the writer supports two-digit years via '%y' formats, but there is no spec guidance on century expansion (Python's strptime uses 1969\u20132068 cutoff). If tests do not include two-digit years this is harmless, but if they do the century expansion might not match expectations.",
+          "rationale": "The spec does not mention two-digit years at all. Including them silently applies Python's default century-pivot logic. If a test expects a specific interpretation of a two-digit year that differs from Python's default, this would be wrong. At a minimum, the writer should be aware of this assumption."
+        },
+        {
+          "line_range": [
+            56,
+            62
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "description": "The first-matching-format wins strategy means ambiguous inputs (e.g., '01/02/2024') are silently resolved by format order rather than raising ValueError or signalling ambiguity.",
+          "rationale": "The spec says to raise ValueError for unparseable input, but is silent on ambiguous input. Silently picking the first matching format is a reasonable choice, but could produce wrong answers if the test suite has a specific expectation for an ambiguous format that doesn't match the writer's ordering."
+        }
+      ],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            13,
+            35
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "description": "The spec example `parse_date(\"2024-03-15\") \u2192 (2024, 3, 15)` passes, but `\"%d-%m-%Y\"` appears before `\"%m-%d-%Y\"` and `\"%Y-%m-%d\"` appears first overall \u2014 this is fine for the ISO example. However, `\"%d/%m/%Y\"` appears before `\"%m/%d/%Y\"`, so `parse_date(\"03/15/2024\")` (a valid US date) would fail entirely since day=15 is invalid as a month, causing strptime to raise ValueError and fall through \u2014 that part is actually fine. But `parse_date(\"01/02/2024\")` returns `(2024, 2, 1)` (day-first) rather than `(2024, 1, 2)` (month-first). The bigger issue: `\"%B %Y %d\"` and `\"%b %Y %d\"` are unlikely formats that could incorrectly match partial inputs that were intended for a different format, and they appear in the list without any real-world motivation.",
+          "rationale": "Lines 25-26 include `\"%B %Y %d\"` / `\"%b %Y %d\"` \u2014 formats like \"March 2024 15\" \u2014 which are not mentioned in the spec and are extremely non-standard. Worse, these formats sit before the abbreviated-month formats, meaning a string like \"Mar 2024 15\" would be consumed by `\"%b %Y %d\"` rather than raising ValueError, silently accepting a bizarre format the user probably didn't intend. This is a correctness hazard for inputs that are near-misses of real formats."
+        },
+        {
+          "line_range": [
+            56,
+            62
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "description": "`datetime.strptime` accepts leading/trailing whitespace inside the format string but not the input (Python < 3.13). The code strips the outer string (`s.strip()`) but does not normalize internal whitespace. A user input like `\"March  15, 2024\"` (double space) will not match `\"%B %d, %Y\"` and will raise ValueError instead of parsing correctly, contrary to the spec's intent to be \"robust to common formats users might type\".",
+          "rationale": "The spec says the function should be robust to common user input. Double spaces between month name and day are a very common typo. The writer strips leading/trailing whitespace at line 51 but never normalises internal whitespace (e.g., via `re.sub(r'\\s+', ' ', s)`). This means `\"March  15, 2024\"` raises ValueError despite being unambiguously parseable."
+        },
+        {
+          "line_range": [
+            44,
+            62
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "description": "The `re` module is imported at line 9 but never used anywhere in the module. This is dead import, but more importantly it signals that a planned normalization step (e.g., whitespace or separator normalization) was omitted, potentially leaving robustness gaps.",
+          "rationale": "Line 9 imports `re` but no `re` call appears anywhere in the code. If the intent was to normalize separators or whitespace before trying strptime formats, that logic was never implemented. Without it, variants like `\"2024 03 15\"` (space-separated) or mixed separators are silently unhandled."
+        },
+        {
+          "line_range": [
+            13,
+            35
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "description": "`\"%Y.%m.%d\"` is tried before `\"%d.%m.%Y\"` which is fine for the spec example, but `\"%d-%m-%Y\"` is tried before `\"%Y-%m-%d\"` \u2014 wait, actually `\"%Y-%m-%d\"` is first. However `\"%d/%m/%Y\"` is before `\"%m/%d/%Y\"` but after `\"%Y/%m/%d\"`. The issue: `\"%Y-%m-%d\"` correctly matches `\"2024-03-15\"`, but `\"%d-%m-%Y\"` would also match `\"15-03-2024\"` \u2014 that's fine. The real gap: there is no format for `\"YYYY-DD-MM\"` which is unusual, but there's also no format for `\"MM-YYYY-DD\"` \u2014 these are unlikely but the list is inconsistent in what orderings it covers, creating an uneven robustness surface.",
+          "rationale": "Low severity style/coverage note: the format list attempts to be exhaustive but is inconsistent \u2014 it covers `\"%B %Y %d\"` (month-name year day, extremely rare) but omits space-separated ISO-like formats `\"%Y %m %d\"`. The inconsistency may mislead future maintainers about what is and isn't supported."
+        }
+      ]
+    },
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets common human-readable date formats and returns (year, month, day).\nRaises ValueError for unparseable input.\n\nDesign decisions:\n- Internal whitespace is normalized (multiple spaces \u2192 single space) before parsing.\n- Numeric-only ambiguous formats: we prefer YYYY-MM-DD (ISO), then month-first (US)\n  for MM/DD/YYYY style, since the spec gives no guidance. \"%Y-...\" is tried first,\n  then month-first numeric (\"%m/...\"), then day-first (\"%d/...\") as fallback.\n- Removed the non-standard \"%B %Y %d\" / \"%b %Y %d\" formats.\n- Two-digit years: supported via Python's default century pivot (1969\u20132068), since\n  the spec is silent on this. They are tried last to avoid misidentifying 4-digit years.\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n\n# Formats to try with strptime (ordered from most specific/common to least)\n_STRPTIME_FORMATS = [\n    # ISO 8601 and ISO-like with various separators (year first \u2014 unambiguous)\n    \"%Y-%m-%d\",\n    \"%Y/%m/%d\",\n    \"%Y.%m.%d\",\n    \"%Y %m %d\",\n    # Month name, full \u2014 unambiguous\n    \"%B %d, %Y\",\n    \"%B %d %Y\",\n    \"%d %B %Y\",\n    \"%d %B, %Y\",\n    # Month name, abbreviated \u2014 unambiguous\n    \"%b %d, %Y\",\n    \"%b %d %Y\",\n    \"%d %b %Y\",\n    \"%d %b, %Y\",\n    # With weekday prefix\n    \"%A, %B %d, %Y\",\n    \"%A, %b %d, %Y\",\n    # Month-first numeric (US convention) \u2014 tried before day-first\n    \"%m-%d-%Y\",\n    \"%m/%d/%Y\",\n    \"%m.%d.%Y\",\n    # Day-first numeric (European convention) \u2014 fallback\n    \"%d-%m-%Y\",\n    \"%d/%m/%Y\",\n    \"%d.%m.%Y\",\n    # Two-digit year variants (tried last)\n    \"%y-%m-%d\",\n    \"%y/%m/%d\",\n    \"%m/%d/%y\",\n    \"%d/%m/%y\",\n]\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\n\n    Supports common formats such as:\n      - ISO 8601: \"2024-03-15\"\n      - Long form: \"March 15, 2024\"\n      - Short month: \"Mar 15, 2024\"\n      - Various separators: \"/\", \"-\", \".\", \" \"\n      - Month-first (US) and day-first (European) numeric variants\n\n    Internal whitespace is normalized so that e.g. \"March  15, 2024\" is accepted.\n    Raises ValueError if the string cannot be parsed.\n    \"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s).__name__!r}\")\n\n    s = s.strip()\n    if not s:\n        raise ValueError(\"Empty date string\")\n\n    # Normalize internal whitespace (multiple spaces/tabs \u2192 single space)\n    s = re.sub(r'\\s+', ' ', s)\n\n    for fmt in _STRPTIME_FORMATS:\n        try:\n            dt = datetime.strptime(s, fmt)\n            return (dt.year, dt.month, dt.day)\n        except ValueError:\n            continue\n\n    raise ValueError(f\"Unable to parse date string: {s!r}\")\n",
+      "reasoning": "I addressed all reviewer feedback:\n\n1. **Format ordering**: Put ISO/year-first formats first (unambiguous), then month-name formats (unambiguous), then month-first numeric (US convention) before day-first numeric (European). This is the most common convention for English-language date parsing.\n\n2. **Removed non-standard formats**: Dropped `\"%B %Y %d\"` and `\"%b %Y %d\"` which were bizarre and could silently consume near-miss inputs.\n\n3. **Internal whitespace normalization**: Added `re.sub(r'\\s+', ' ', s)` to normalize multiple spaces to a single space before trying formats. Now `\"March  15, 2024\"` will parse correctly.\n\n4. **Actually using the `re` import**: The `re` module is now genuinely used for whitespace normalization.\n\n5. **Two-digit years**: Kept but moved to last, with a comment about Python's default century pivot.\n\n6. **Added `\"%Y %m %d\"`**: Added space-separated ISO-like format for consistency.\n\nThe prior attempt passed 9/11 tests. I preserved all the formats it had (minus the bizarre ones) and fixed the ordering + whitespace normalization issues.",
+      "test_signal": "10 / 11 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            38,
+            50
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "description": "Month-first numeric formats `%m-%d-%Y`, `%m/%d/%Y`, `%m.%d.%Y` are tried before day-first equivalents, meaning a date like `15/03/2024` (day=15, unambiguously day-first since 15 > 12) will be parsed correctly, but `03/05/2024` will always be interpreted as March 5 rather than May 3 with no way to distinguish. More critically, the ordering also means `%m-%d-%Y` is attempted before `%d-%m-%Y`, so the format `%Y-%m-%d` succeeds for ISO dates, but if a user types `01-02-2024` intending Feb 1 (day-first), the parser silently returns (2024, 1, 2) \u2014 January 2. This is a silent wrong-answer bug for ambiguous numeric inputs, and no `ValueError` is raised.",
+          "rationale": "The spec says 'robust to common formats' but gives no disambiguation rule for purely numeric ambiguous dates. The code's design comment acknowledges this and chooses month-first, but this means day-first inputs are silently misinterpreted rather than raising `ValueError`. This is a correctness concern since the spec says raise `ValueError` for unparseable input \u2014 ambiguous input arguably falls in that category, but at minimum the silent wrong result is a bug worth flagging."
+        },
+        {
+          "line_range": [
+            55,
+            56
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "description": "`not isinstance(s, str)` check raises `ValueError` but the type annotation declares `s: str`. More importantly, passing `None` will raise `AttributeError` on `s.strip()` before the isinstance check can fire \u2014 wait, the isinstance check IS before strip, so `None` is handled. However, passing a non-string like an `int` raises `ValueError` with a message about type, which is arguably correct. No actual bug here \u2014 downgrading this note.",
+          "rationale": "Re-read: isinstance check at line 55 fires before strip, so None and non-strings are caught. Not a bug."
+        },
+        {
+          "line_range": [
+            46,
+            50
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "description": "The format `%d-%m-%Y` at line 46 shadows `%m-%d-%Y` at line 44 for any input where both could match (month \u2264 12 and day \u2264 12). Since `%m-%d-%Y` is listed first, `01-02-2024` is always January 2, never February 1. But the more subtle bug is that `%d-%m-%Y` can NEVER win over `%m-%d-%Y` for any valid date where both parse successfully (both fields \u2264 12), making the European day-first fallback effectively dead code for the hyphen separator when both fields are \u2264 12.",
+          "rationale": "Strptime will accept `01-02-2024` as both `%m-%d-%Y` (Jan 2) and `%d-%m-%Y` (Feb 1). Since `%m-%d-%Y` is earlier in the list, the European interpretation is unreachable for ambiguous hyphen-separated inputs. The 'day-first as fallback' comment in the design decisions implies this is intentional, but it means European users entering `05-03-2024` (March 5) get May 3 silently."
+        },
+        {
+          "line_range": [
+            29,
+            36
+          ],
+          "category": "spec-ambiguity",
+          "severity": "low",
+          "description": "The spec example `parse_date(\"March 15, 2024\")` is handled by `\"%B %d, %Y\"` at line 30, which is correct. However the ordinal form `\"March 15th, 2024\"` (common human input) is not handled and will raise `ValueError`. The spec says 'robust to common formats users might type' \u2014 ordinal suffixes (st, nd, rd, th) are a common human typing pattern not covered.",
+          "rationale": "strptime has no directive for ordinal suffixes. A pre-processing step stripping ordinal suffixes (e.g. `re.sub(r'(\\d+)(st|nd|rd|th)\\b', r'\\1', s)`) would make the function more robust per spec intent. Not adding it is a spec-robustness gap."
+        },
+        {
+          "line_range": [
+            63,
+            72
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "description": "The two-digit year formats `%y-%m-%d` and `%y/%m/%d` at lines 63\u201364 will match inputs like `24-03-15` and interpret year=2024, month=3, day=15. However, these are also valid as YYYY with only 2-digit year fields which is unusual. More concretely, `24/03/2024` cannot arise, but `24/03/15` would match `%y/%m/%d` as (2024,3,15) OR could be seen as `%Y/%m/%d` failing (year=24 is valid in strptime as year 24 AD). Since `%Y/%m/%d` is tried first at line 22 and strptime accepts `%Y` matching `24`, `parse_date(\"24/03/15\")` returns `(24, 3, 15)` \u2014 year 24 AD \u2014 rather than `(2024, 3, 15)`. This may be surprising but is consistent with strptime semantics.",
+          "rationale": "strptime `%Y` matches any number of digits for the year field, so `24` is parsed as year 24, not 2024. The two-digit year format `%y` at line 63 is shadowed by `%Y` at line 22 for slash/hyphen/dot separators, making the `%y` entries at lines 63\u201364 dead code for those separators when the input is two-digit year."
+        }
+      ]
+    },
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets common human-readable date formats and returns (year, month, day).\nRaises ValueError for unparseable input.\n\nDesign decisions:\n- Internal whitespace is normalized (multiple spaces \u2192 single space) before parsing.\n- Ordinal suffixes (1st, 2nd, 3rd, 4th, etc.) are stripped before parsing.\n- Numeric-only ambiguous formats: we prefer YYYY-MM-DD (ISO) for year-first,\n  then month-first (US) for MM/DD/YYYY style, since the spec gives no guidance.\n  \"%Y-...\" is tried first, then month-first numeric (\"%m/...\"), then day-first\n  (\"%d/...\") as fallback for cases where day > 12 (unambiguous).\n- Two-digit years: supported via Python's default century pivot (1969\u20132068), since\n  the spec is silent on this. They are tried last to avoid misidentifying 4-digit years.\n- The '%Y' directive in strptime matches any number of digits, so 2-digit year\n  formats like '%y' are only reachable if we check 4-digit year formats first.\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n\n# Formats to try with strptime (ordered from most specific/common to least)\n_STRPTIME_FORMATS = [\n    # ISO 8601 and ISO-like with various separators (year first \u2014 unambiguous)\n    \"%Y-%m-%d\",\n    \"%Y/%m/%d\",\n    \"%Y.%m.%d\",\n    \"%Y %m %d\",\n    # Month name, full \u2014 unambiguous\n    \"%B %d, %Y\",\n    \"%B %d %Y\",\n    \"%d %B %Y\",\n    \"%d %B, %Y\",\n    # Month name, abbreviated \u2014 unambiguous\n    \"%b %d, %Y\",\n    \"%b %d %Y\",\n    \"%d %b %Y\",\n    \"%d %b, %Y\",\n    # With weekday prefix\n    \"%A, %B %d, %Y\",\n    \"%A, %b %d, %Y\",\n    # Month-first numeric (US convention) \u2014 tried before day-first\n    \"%m-%d-%Y\",\n    \"%m/%d/%Y\",\n    \"%m.%d.%Y\",\n    # Day-first numeric (European convention) \u2014 fallback\n    \"%d-%m-%Y\",\n    \"%d/%m/%Y\",\n    \"%d.%m.%Y\",\n    # Two-digit year variants (tried last, after all 4-digit formats)\n    \"%y-%m-%d\",\n    \"%y/%m/%d\",\n    \"%m/%d/%y\",\n    \"%d/%m/%y\",\n]\n\n\ndef _preprocess(s: str) -> str:\n    \"\"\"Normalize a date string for parsing.\"\"\"\n    # Strip leading/trailing whitespace\n    s = s.strip()\n    # Normalize internal whitespace (multiple spaces/tabs \u2192 single space)\n    s = re.sub(r'\\s+', ' ', s)\n    # Remove ordinal suffixes: 1st, 2nd, 3rd, 4th ... 31st\n    s = re.sub(r'(\\d+)(st|nd|rd|th)\\b', r'\\1', s, flags=re.IGNORECASE)\n    return s\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\n\n    Supports common formats such as:\n      - ISO 8601: \"2024-03-15\"\n      - Long form: \"March 15, 2024\"\n      - Short month: \"Mar 15, 2024\"\n      - Various separators: \"/\", \"-\", \".\", \" \"\n      - Ordinal dates: \"March 15th, 2024\"\n      - Month-first (US) and day-first (European) numeric variants\n\n    Internal whitespace is normalized so that e.g. \"March  15, 2024\" is accepted.\n    Raises ValueError if the string cannot be parsed.\n    \"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s).__name__!r}\")\n\n    if not s.strip():\n        raise ValueError(\"Empty date string\")\n\n    s = _preprocess(s)\n\n    if not s:\n        raise ValueError(\"Empty date string after preprocessing\")\n\n    for fmt in _STRPTIME_FORMATS:\n        try:\n            dt = datetime.strptime(s, fmt)\n            return (dt.year, dt.month, dt.day)\n        except ValueError:\n            continue\n\n    raise ValueError(f\"Unable to parse date string: {s!r}\")\n",
+      "reasoning": "The main change from attempt 2 is adding ordinal suffix stripping (e.g., \"March 15th, 2024\" \u2192 \"March 15, 2024\") via a regex in the preprocessing step, which addresses the reviewer feedback about common human typing patterns. This was identified as a likely source of the 1 failing test. I preserved all the other improvements from attempt 2: internal whitespace normalization, month-first US ordering before day-first European, ISO year-first formats first, and the removed non-standard \"%B %Y %d\" formats. The format ordering remains the same as attempt 2 which got 10/11 tests passing.",
+      "test_signal": "10 / 11 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 9,
+      "failed": 2,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_us_slashes_interpreted_as_mm_dd_yyyy",
+          "outcome": "failed",
+          "longrepr": "tests.py:37: in test_us_slashes_interpreted_as_mm_dd_yyyy\n    assert parse_date(\"03/04/2024\") == (2024, 3, 4)\nE   assert (2024, 4, 3) == (2024, 3, 4)\nE     \nE     At index 1 diff: 4 != 3\nE     Use -v to get more diff"
+        },
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    },
+    {
+      "passed": 10,
+      "failed": 1,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    },
+    {
+      "passed": 10,
+      "failed": 1,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    }
+  ]
+}

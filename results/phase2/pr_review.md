@@ -7,230 +7,181 @@ approximate-match dedup.
 ## Summary
 
 - Files reviewed: **6** Python files
-- Total merged findings: **38**
-- critical: 1
-- high: 6
-- medium: 18
-- low: 13
+- Total merged findings: **29**
+- high: 5
+- medium: 13
+- low: 11
 
-## `agents/writer.py` (A)
+## `agents/writer.py` (M)
 
-### [medium/correctness] lines 91–97
+### [low/correctness] lines 117–118
 
-The `write` function silently returns an empty `WriterOutput` when no `submit_solution` tool call is found in the response, masking API failures or unexpected response shapes.
+`extra_system` is stripped/trimmed nowhere before concatenation. If a caller passes a string that already starts with `\n\n`, the system prompt will contain four newlines between the base prompt and the appended guidance, which is harmless but inconsistent. More importantly, if `extra_system` is all-whitespace (non-empty), the condition `if extra_system` is True and a whitespace-only block is appended, producing a system prompt that ends with `\n\n   ` with no actual content added.
 
-_Rationale:_ If the model returns an unexpected response (e.g., a stop_reason other than `tool_use`, or the API returns content without the expected tool block), the caller receives `WriterOutput(code='', reasoning='agent did not call submit_solution')` with no exception raised. The caller has no reliable way to distinguish this silent failure from a legitimate empty response, and an empty string passed as `code` to the downstream sandbox will silently produce a non-functional module. A raised exception or a distinct error signal would be far safer.
+### [low/correctness] lines 205–208
 
-### [medium/security] lines 155–160
-
-The `__main__` block constructs a filesystem path from an unsanitized command-line argument (`sys.argv[1]`) and reads that file without any path traversal checks.
-
-_Rationale:_ The argument is interpolated directly into `Path(...) / task / 'spec.md'`. An attacker (or accidental misuse) can pass a value like `../../etc/passwd` to read arbitrary files accessible to the process. While this is a CLI entrypoint rather than a network-exposed endpoint, the pattern is still a path-traversal risk and warrants at minimum a check that the resolved path stays inside the expected `phase2_corpus` directory.
-
-### [low/correctness] lines 74–79
-
-The global `_CLIENT` singleton is not thread-safe; concurrent calls to `_client()` can construct multiple `Anthropic()` instances and race on `_CLIENT`.
-
-_Rationale:_ Two threads that both observe `_CLIENT is None` before either writes the new value will both create an `Anthropic()` instance, and the second write will silently overwrite the first. In a single-threaded CLI this is harmless, but the module exposes a public `write()` function that could be called concurrently. A lock around the initialisation block would prevent the race.
-
-### [low/correctness] lines 100–150
-
-In `_format_user_message`, when `att.code` is an empty string (e.g., from a prior failed attempt where `WriterOutput.code == ""`), the rendered code fence block will contain only a newline, giving the writer no actual code to reason about. The history entry still claims to be "Attempt N" with a code block, silently conveying no information.
-
-### [low/correctness] lines 155–161
-
-In the `__main__` block, `spec_path.read_text()` is called without specifying an encoding, relying on the platform default. On Windows or systems with non-UTF-8 locales this can silently misread spec files containing non-ASCII characters (e.g., math symbols, Unicode examples in the spec).
+`_render_feedback` renders fields in a fixed order (spec_quote → proposed_interpretation → rationale) regardless of finding schema version, but `ARM_C_TYPED_FINDINGS_GUIDANCE` tells the writer to look for a `Spec quote` line only for `spec-violation` findings. A `spec-interpretation` finding that happens to carry a non-empty `spec_quote` value will also emit a `Spec quote:` line, potentially misleading the writer into treating it as a spec-violation.
 
 ---
 
-## `agents/writer_arbiter.py` (A)
+## `agents/writer_arbiter_typed.py` (A)
 
-### [medium/correctness] lines 57–72
+### [high/correctness] lines 122–133
 
-The `ARBITER_TOOL` schema's `category` enum does not include `"security"`, yet the outer system prompt instructs the model to think about security issues. Any security finding the model tries to report will either be rejected by the API schema validation or silently coerced, causing valid security findings to be lost.
+`tool_choice` forces the model to call `report_independent_findings`, but the loop in `arbitrate` that searches `resp.content` for a matching tool-use block will silently return `[]` if the block's `input` key is missing or `block.input` is `None`. Specifically, `block.input.get('findings', [])` will raise `AttributeError` if `block.input` is `None` rather than returning an empty list.
 
-### [medium/correctness] lines 75–75
+### [medium/correctness] lines 155–180
 
-The `_CLIENT` singleton is not thread-safe: concurrent calls to `_client()` can both observe `_CLIENT is None` and construct two `Anthropic()` instances.
+`_validate` mutates the input dicts (`f`) from the `findings` list in place (adds `downgraded_reason`, `spec_quote_found_in_spec`, overwrites `finding_type`) before appending them to `out`, meaning the caller's original `reviewer_findings` list contents are not modified, but the raw dicts returned by the API are mutated as a side effect.
 
-_Rationale:_ Without a lock, a race between two threads both seeing `_CLIENT is None` results in two separate client objects being created; one is silently discarded. In a multi-threaded writer-loop context this is a real race, not a theoretical one.
+_Rationale:_ The dicts in `findings` are mutable objects received from `block.input.get('findings', [])`. The function adds keys directly to each dict while iterating, permanently altering the objects. While the caller in `arbitrate` doesn't reuse them after `_validate` returns, this is a surprising mutation side effect that could cause bugs if the validated list is ever cached or inspected before/after the call. Defensive code should build new dicts instead of mutating the originals.
 
-### [medium/correctness] lines 97–104
+### [medium/correctness] lines 163–163
 
-The `arbitrate` function silently returns an empty list if the API response contains no `tool_use` block, with no logging or exception, making silent failures indistinguishable from a clean "no new findings" result.
+In `_validate`, when `finding_type` is already unknown and gets reassigned to `spec-interpretation`, the `downgraded_reason` string uses `f.get('finding_type')` which now returns the already-overwritten value (`ft` was set to `spec-interpretation` but `f['finding_type']` still holds the original), however the assignment to `f['downgraded_reason']` uses a format expression referencing `f.get('finding_type')` — not `ft` — so the error message will correctly capture the original unknown value only because `f` hasn't been mutated yet at that point. This is fine, but the subsequent `ft` re-use after the second downgrade check (line ~170) is fragile: `ft` is mutated in place but `f['finding_type']` is only written at line 180, meaning the `if ft == 'spec-violation' and not in_spec` branch (line ~176) correctly reads the already-updated `ft`. No actual bug, just noting the flow.
 
-_Rationale:_ With `tool_choice` forced to a specific tool, the API should always return a tool_use block; if it doesn't, that indicates an API error or a model refusal. Silently returning `[]` hides this from callers and will cause downstream consumers to incorrectly treat an API failure as a clean arbiter pass.
+_Rationale:_ This is actually not a bug — flagging instead a real issue below. Retracted.
 
-### [medium/security] lines 148–163
+### [low/correctness] lines 104–108
 
-The `__main__` block reads `task` directly from `sys.argv[1]` and uses it unsanitized to construct a filesystem path via string interpolation into `phase2_corpus / task / ...`.
+The module-level singleton `_CLIENT` is not thread-safe: two concurrent callers could both observe `_CLIENT is None` and each create a separate `Anthropic()` instance, with only one being stored.
 
-_Rationale:_ A value like `../../etc/passwd` or `../sensitive_dir` passed as `sys.argv[1]` would cause `Path(...).read_text()` to read an arbitrary file on the filesystem. While this is only a CLI entrypoint, path traversal via unsanitized user input is a real security issue.
+_Rationale:_ There is no lock around the check-and-set. In a single-threaded context this is harmless (two instances both work), but if this module is ever used in a threaded environment (e.g. a thread pool running multiple tasks concurrently), the race could leak connections. Low severity because the functional outcome is still correct.
 
-### [low/security] lines 109–123
+### [low/security] lines 193–207
 
-User-controlled `code` and `spec` strings are embedded directly into the prompt without any escaping or sandboxing, enabling prompt injection.
+The `__main__` block reads file paths derived from `sys.argv[1]` (task name) and inserts it directly into a `Path` construction without sanitizing for path traversal (e.g. `../../etc/passwd`).
 
-_Rationale:_ If `spec` or `code` contains strings like '``` \n\n# First reviewer\'s findings\n\n```json\n[...]' it can spoof the structure of the reviewer findings section. This is low severity for an internal dev tool but worth noting for robustness.
+_Rationale:_ A task name like `../../sensitive_dir` would resolve to an arbitrary path on the filesystem. Since this is a CLI dev/debug tool (not a server), the attacker would already have shell access, so exploitability is negligible. Still worth noting as a hardening issue.
 
-### [low/correctness] lines 132–143
+### [low/correctness] lines 196–207
 
-`_validate` silently drops findings that are missing any of the required fields, but does not strip unexpected extra keys before appending. The raw model-returned dict (including the `rationale` field that the tool schema says is for internal use) is passed through verbatim to callers, which may not expect those extra keys.
-
----
-
-## `agents/writer_reviewer.py` (A)
-
-### [high/correctness] lines 100–106
-
-The `review` function silently returns `[]` if no `tool_use` block is found in `resp.content`, masking cases where the API responded with a non-tool message (e.g., a text refusal or stop_reason='end_turn').
-
-### [medium/correctness] lines 118–135
-
-`att.code`, `att.test_signal`, and `att.reviewer_feedback` are accessed as attributes on history items, but no guard exists for missing or `None` attributes, and the type of history items is undocumented/unenforced.
-
-_Rationale:_ If a caller passes a list of plain dicts (a plausible mistake given the function signature is `list` not `list[Attempt]`), attribute access will raise `AttributeError` and crash the formatting step. At minimum the code should document or assert the expected type, or use `getattr` with fallbacks to fail gracefully.
-
-### [medium/correctness] lines 119–122
-
-History attempt numbering shown to the reviewer uses 1-based indices over the full history list, but the latest attempt being reviewed is NOT in `history` — so `## Attempt {i}` in the history section labels prior attempts 1..N, while the 'latest attempt' shown above has no number. This makes the reviewer's cross-reference feedback (e.g. 'regression from attempt 2') ambiguous: it could mean attempt 2 of the history (which is attempt 3 overall) or the literal second attempt.
-
-### [low/correctness] lines 85–86
-
-The singleton `_CLIENT` is not thread-safe: two concurrent calls to `_client()` could both see `_CLIENT is None` and create two `Anthropic()` instances, with the second overwriting the first.
-
-### [low/style] lines 86–86
-
-Mutable default argument `history: list = None` uses implicit `None` typed as `list`.
-
-_Rationale:_ The type annotation says `list` but the default is `None`. This is a minor inconsistency — it should be `history: list | None = None` (or `Optional[list]`). It does not cause a runtime bug because the body uses `history or []`, but the annotation is misleading and will produce type-checker warnings.
-
-### [low/style] lines 131–131
-
-f-string `f"Reviewer feedback given:\n"` has no interpolated variables; should be a plain string.
-
-_Rationale:_ Using an f-string with no format placeholders is unnecessary and triggers a linter warning (e.g., `pylint` F541 / `ruff` F541). Not a correctness issue.
+The `__main__` block calls `review(code, spec, history=None)` but the return type of `review` from `writer_reviewer_typed` is not validated before being passed as `reviewer_findings` to `arbitrate`. If `review` raises or returns `None`, the subsequent `arbitrate` call will crash with a misleading error rather than a helpful message.
 
 ---
 
-## `eval/phase2_harness.py` (A)
+## `agents/writer_reviewer_typed.py` (A)
 
-### [medium/correctness] lines 148–148
+### [high/correctness] lines 157–168
 
-The `out_dir` path replaces `+` with `_` (e.g. `writer_reviewer_arbiter`) but the summary file uses a separate `.replace('+', '_')` call on the mode string directly (line 193). These are consistent with each other, but the `out_dir` is never used to write the summary — the summary is written directly to `RESULTS_DIR`, not `out_dir`. This means if `RESULTS_DIR` doesn't exist before `main` is called with no tasks (empty task list), the `out_dir.mkdir` call still runs, but the summary write at line 193 can fail because `RESULTS_DIR` itself may not yet exist.
+`review()` iterates over `resp.content` and returns on the first matching `tool_use` block, but if the API returns no `tool_use` block at all (e.g., on a stop-reason of `max_tokens` or an unexpected response shape), it returns `[]` silently. A truncated response due to `max_tokens=4096` being insufficient for a large code+spec+history input would cause the function to return an empty findings list, indistinguishable from a 'no issues found' result.
 
-### [medium/correctness] lines 169–175
+### [high/correctness] lines 220–249
 
-The synthetic `TaskRun` created in the exception handler leaves `history` and `test_results` fields unset, which will cause `serialize_run` to crash with an `AttributeError` when it tries to iterate `run.history` and `run.test_results`.
+`_validate` silently drops any finding whose `line_range` contains non-integer values (e.g., floats or strings), but also silently drops findings with a missing or malformed `line_range` entirely — including a valid `[0, 0]` whole-file finding if the API returns the integers as JSON numbers that Python parses as ints correctly. The real gap is: the tool schema specifies `[0, 0]` as the sentinel for whole-file issues, but `_validate` does not whitelist `[0, 0]` — it validates it the same way. That part is fine. The actual missed issue is that the validator drops malformed findings silently with no logging or error, so callers have no way to know findings were lost.
 
-_Rationale:_ If `TaskRun` is a dataclass with `history` and `test_results` defaulting to something falsy or not defined, the constructed object won't have those fields, and `serialize_run` (line ~42) iterates them unconditionally. Depending on the dataclass definition, this will raise `AttributeError`, crashing the per-task persistence and potentially aborting the entire harness run for subsequent tasks if the exception propagates past `write_text`.
+### [medium/correctness] lines 193–196
 
-### [medium/correctness] lines 213–213
+`att.code`, `att.test_signal`, and `att.reviewer_feedback` are accessed as attributes on history items without any type or attribute guards, so a malformed history entry will raise an `AttributeError` and abort the review.
 
-The budget argument parsing silently falls back to the default (3) when `sys.argv[2]` is not purely digits, causing non-numeric budget values to be silently ignored rather than rejected.
+_Rationale:_ The `history` parameter is typed as a plain `list` with no documented element type. If a caller passes a list of dicts (the format in which findings are stored and returned), the attribute accesses `att.code`, `att.test_signal`, `att.reviewer_feedback` will raise `AttributeError`, crashing the entire review call. There is no try/except or isinstance guard. Either the expected type should be documented/enforced, or attribute access should use `getattr` with defaults.
 
-_Rationale:_ A user passing `python eval/phase2_harness.py writer-alone foo task1` would have `sys.argv[2] == 'foo'`, which `.isdigit()` rejects, so budget silently stays 3 and 'foo' is not treated as a task filter either (it goes to `sys.argv[3:]`). More critically, a float like `'5.0'` also fails `.isdigit()`, producing a silent default instead of an error or the intended value. This breaks the documented contract of `[budget]` without any user-visible warning.
+### [medium/correctness] lines 215–215
 
-### [medium/correctness] lines 214–214
+Variable name `f` in the inner loop of `_format_user_message` shadows the outer loop variable `f` in `_validate`, and more critically within `_format_user_message` itself the loop variable `f` (a finding dict) shadows the loop variable `f` from the outer `att` loop — but the real bug is that `f` is also the name used in `_validate`'s loop, which is a separate concern. Within `_format_user_message`, the inner `for f in att.reviewer_feedback` shadows nothing locally, but `f` is a very common name and the same name is reused in `_validate` for a different purpose.
 
-`filter_tasks` only collects arguments from `sys.argv[3:]`, so if a task ID happens to be purely numeric (e.g. `'123'`), it is silently dropped from the filter.
+_Rationale:_ This is a low-severity style note; the two loops are in different functions so there is no actual shadowing bug. Flagging as low/style only.
 
-_Rationale:_ The filter expression `[a for a in sys.argv[3:] if not a.isdigit()]` was written to skip the budget argument but is applied to all remaining args. Task IDs that are numeric strings will be silently excluded from the filter, causing the harness to run all tasks instead of just the requested ones, with no error or warning.
+### [medium/correctness] lines 226–233
 
-### [low/style] lines 17–17
+In `_validate`, when `ft` is reassigned after the `unknown finding_type` check but `f` still holds the original `finding_type` value, writing `f['downgraded_reason']` mutates the caller's dict. This is a side-effect mutation of the input list's dicts.
 
-`import dataclasses` is imported but never used in the file.
+_Rationale:_ The `_validate` function mutates the dict objects inside the `findings` list in-place (e.g., setting `f['downgraded_reason']`, `f['spec_quote_found_in_spec']`, `f['finding_type']`). Since Python dicts are passed by reference, this mutates the original `block.input` data that came from the API. If the caller holds a reference to the original response object (e.g., for logging), they will see unexpected mutations. A shallow copy (`f = dict(f)`) at the start of the loop would prevent this.
 
-_Rationale:_ Dead import — `dataclasses` is not referenced anywhere in the module. Should be removed to keep the import block clean.
+### [low/style] lines 136–136
 
-### [low/correctness] lines 77–79
+Mutable default argument `history: list = None` should be typed as `Optional[list]`.
 
-`by_difficulty` row sets `pass_rate` as `converged/n`, but `converged` here counts tasks where `r.converged` is true — not tasks that passed all tests. This is consistent naming internally, but the metric labeled `pass_rate` in the per-difficulty breakdown has a different denominator logic than `test_recall`, and the `by_difficulty` row's `pass_rate` key shadows a different concept than the overall `pass_rate`. Not a crash, but the summary's `by_difficulty[d]['pass_rate']` is actually a convergence rate, which could mislead downstream consumers of the JSON artifact who compare it against `test_recall`.
+_Rationale:_ Using `= None` with a bare `list` type hint is technically a type error (None is not a list). The correct annotation is `history: list | None = None` (or `Optional[list]`). The code works at runtime because `history or []` handles it, but the signature is misleading and will cause issues with strict type checkers.
 
-### [low/correctness] lines 193–193
+### [low/correctness] lines 136–136
 
-The summary JSON is written with `mode.replace('+', '_')` in the filename but `summary['mode']` still contains the original mode string with `+` (e.g. `writer+reviewer+arbiter`). This inconsistency is minor but means the filename and the `mode` field inside the file don't use the same representation, which could confuse tools that parse the filename to identify the mode.
-
----
-
-## `eval/sandbox.py` (A)
-
-### [critical/security] lines 47–48
-
-No path traversal check on `task_id` before using it to construct a filesystem path.
-
-_Rationale:_ A caller passing `task_id = '../../etc'` or similar would escape `CORPUS_DIR`. The only guard is `task_dir.is_dir()`, which passes for any real directory on the filesystem. An attacker (or buggy caller) can read and copy arbitrary `tests.py`-named files from outside the corpus, and have arbitrary code executed inside the sandbox subprocess.
-
-### [high/correctness] lines 46–52
-
-`tests.py` from the task corpus is copied into the tmpdir but the `solution.py` is written next to it with no `conftest.py` or `__init__.py`, so `tests.py` importing `from solution import ...` will only work if the tmpdir happens to be on `sys.path`. This is pytest-dependent and may silently fail on some setups, causing false `crashed` results.
-
-### [high/security] lines 50–51
-
-Arbitrary code from `code` parameter is written to disk and executed without any sandboxing or resource limits beyond a wall-clock timeout.
-
-_Rationale:_ The function accepts arbitrary Python source code and runs it via pytest with no OS-level sandbox (no seccomp, no network namespace, no CPU/memory rlimits). The timeout only prevents indefinite blocking; a malicious payload can read/write files, open network connections, or exhaust memory within the timeout window. The docstring implies sandboxing that is not actually implemented.
-
-### [medium/correctness] lines 73–83
-
-`TimeoutExpired.stdout` may be `bytes` when `text=True` is set but the process is killed before encoding completes; the isinstance guard discards it silently.
-
-_Rationale:_ `subprocess.run` with `text=True` and `timeout` can still leave `e.stdout` as `bytes` in some Python versions/edge cases (e.g., partial reads). The current code checks `isinstance(e.stdout, str)` and falls back to `""`, so partial output is lost. A safer approach is to decode bytes or accept both, matching how `proc.stdout` is used in the non-timeout path.
-
-### [medium/correctness] lines 97–97
-
-`errors` is read from `summary["error"]` (singular) but pytest-json-report uses the key `"errors"` (plural) for collection/runtime errors.
-
-### [medium/correctness] lines 118–119
-
-`all_passed` is `False` when `total == 0` even if `crashed` is also `True`, but `crashed=False` and `all_passed=False` together are ambiguous for a 0-test suite.
-
-_Rationale:_ If pytest runs and collects zero tests (e.g., an empty test file) with exit code 0, `total` is 0, `collection_failed` stays `False`, and `crashed` is `False`, yet `all_passed` is also `False`. A caller cannot distinguish "nothing to run" from "something failed". This is a contract bug: the function's return value is misleading for empty test suites.
-
-### [low/correctness] lines 141–142
-
-The `__main__` block reads `solution.py` from the corpus directory rather than exercising the full round-trip with user-supplied code.
-
-_Rationale:_ This is a debug/manual-use entry point, so the risk is low, but it means `run_tests` is never exercised end-to-end from the CLI with untrusted input — making it harder to catch issues like the timeout path or the collection-failure path during manual testing.
+The `review()` function signature uses `history: list = None` but the `_format_user_message` internal call on line 138 already normalizes it with `history or []`. However, a caller passing an empty list `[]` would have `history or []` evaluate to `[]` (falsy), which is correct — but this means a caller cannot distinguish between 'no history provided' and 'empty history provided'. This is not a bug given current usage but is a subtle contract issue.
 
 ---
 
-## `eval/writer_loop.py` (A)
+## `eval/aggregate_iter2.py` (A)
 
-### [high/security] lines 60–61
+### [high/correctness] lines 76–84
 
-The `task_id` parameter is used to construct a file path without any validation or sanitization, enabling path traversal.
+When `n == 0` (no runs loaded for a seed), `pass_rate` is guarded but the four `sum(...)` calls over `runs.values()` still execute safely; however `conv / n` is the only guard — `passed / total` is separately guarded. The real problem is that if `runs` is empty, `conv`, `passed`, `total` are all 0 and no crash occurs, but the `per_seed` entry records `n_tasks: 0`, and the human-readable summary later prints `r['converged']/r['n_tasks']` which is just a display issue. The actual bug is that a missing arm directory or entirely absent seed directory silently produces an `n_tasks: 0` row that poisons per-arm statistics with no warning.
 
-_Rationale:_ `CORPUS_DIR / task_id / 'spec.md'` will follow `../` segments in `task_id` (e.g. `../../etc/passwd`), allowing a caller to read arbitrary files outside the corpus directory. The same unsanitized `task_id` is also passed to `run_tests`, which likely does similar path construction.
+_Rationale:_ If a seed directory is absent or empty, all tasks for that seed are silently skipped, `n_tasks` becomes 0, and all aggregated metrics for that arm/seed combination are zeroed out. This will produce misleading aggregate results (e.g., artificially low pass rates) with no error raised, violating the script's stated contract of reading seeds 1–3 for all arms.
 
-### [high/correctness] lines 62–65
+### [medium/correctness] lines 108–115
 
-If `write()` raises an exception (e.g. API error, network failure), the loop exits without appending to `history` or `results`, but there is no exception handling to return a graceful `TaskRun` with an error. This is inconsistent with how other error conditions are handled.
+`us_tasks` is recomputed identically on every iteration of the `seed` loop inside `underspec_pass_rates`, but more importantly the variable `t` used in the inner comprehension (`for t in tasks if diff_of[t] == 'underspec'`) shadows the outer loop variable `t` in `main()` at that scope level (the nested function closes over `tasks` and `diff_of` but `t` is a fresh local in the comprehension, so no actual shadowing bug). However, re-filtering `us_tasks` inside the seed loop is wasteful — minor style/performance issue.
 
-### [high/correctness] lines 172–173
+_Rationale:_ This is a minor inefficiency: `us_tasks` does not change between seeds and should be computed once before the loop. Not a correctness bug but worth noting.
 
-`len(att.reviewer_feedback)` and `len(att.arbiter_feedback)` will raise `TypeError` if either field is `None` (its default value).
+### [medium/correctness] lines 160–162
 
-_Rationale:_ The `if att.reviewer_feedback or att.arbiter_feedback:` guard passes when one of the two fields is truthy and the other may still be `None`. For example, if `reviewer_feedback` is a non-empty list but `arbiter_feedback` is `None`, the condition is truthy and the print call reaches `len(att.arbiter_feedback)`, which crashes with `TypeError: object of type 'NoneType' has no len()`.
+A finding whose `finding_type` is `None` (key absent) is counted in `pt['interpretations']` and contributes to `n_total_findings`, but is neither a validated spec-violation nor explicitly an interpretation. The `else` branch on line 175 catches all non-`'spec-violation'` values including `None`, silently treating missing/unknown types as interpretations.
 
-### [medium/correctness] lines 59–61
+_Rationale:_ If a run's feedback entry omits `finding_type` entirely (e.g., schema mismatch or partial write), it is silently bucketed as an 'interpretation'. This could inflate the interpretation count and undercount violations without any diagnostic signal, producing a quietly wrong aggregate.
 
-`spec.md` is read without exception handling; a missing or unreadable spec file will raise an uncaught `FileNotFoundError` / `PermissionError` instead of returning a `TaskRun` with an error field.
+### [medium/correctness] lines 192–216
 
-_Rationale:_ All other error conditions in `run_task` are handled gracefully by returning a `TaskRun` with `error` set. A missing spec file, which is a realistic operational failure, will instead bubble an unhandled exception to the caller, breaking the contract the function implies.
+The contamination counting loop (lines 192–216) is a full duplicate of the inner loop already performed in lines 165–191, iterating over the exact same `arm_c_data` structure to count the subset of findings where `finding_type == 'spec-violation'` and `spec_quote_found_in_spec is False`. This count could be derived during the first pass by adding one counter.
 
-### [medium/correctness] lines 116–119
+_Rationale:_ The contamination count could have been accumulated during the first pass (lines 165–191), which already inspects `finding_type` and `spec_quote_found_in_spec` for every finding. The second full traversal of the same data is redundant work and creates a maintenance hazard: if the data structure changes, both loops must be updated independently, risking inconsistency.
 
-Feedback is attached to the `attempt` object after the attempt has already been appended to `history` passed to `reviewer_fn`, so the reviewer's own history view is stale.
+### [medium/correctness] lines 219–229
 
-_Rationale:_ The reviewer is called with the current `history` (which does not yet include the current `attempt`), which is by design per the comment. However, the feedback is set on `attempt` before `history.append(attempt)`, meaning on the *next* iteration the writer will see an attempt in history that has feedback attached. This is fine. The real issue is more subtle: if `reviewer_fn` raises an exception after `results.append(result)` but before `history.append(attempt)`, the result and history lists fall out of sync (lengths differ), violating the invariant stated in the `TaskRun` docstring (`test_results` is described as 'one per attempt, parallel to history').
+`spec_violation_attempts_downgraded` (printed as "attempted spec-violations downgraded") actually counts ALL downgraded findings across ALL finding types, not only downgraded spec-violation attempts. A finding with `finding_type == "interpretation"` that also has a `downgraded_reason` key is included. The label in the human-readable output and the docstring both claim this is the count of downgraded spec-violation *attempts*, but the code counts any finding that has `downgraded_reason`, regardless of type.
 
-### [medium/correctness] lines 125–134
+### [low/correctness] lines 96–105
 
-When the budget is exhausted via the `break` path, `iterations` is reported as `len(results)` rather than `budget`, which will be incorrect if `results` is shorter than `budget` due to an early-empty-code return on a prior iteration (impossible given current flow, but the two expressions are not equivalent in general and diverge if the loop logic changes).
+`convs.append(run["converged"])` stores the raw value from the JSON (could be bool, int, or any truthy type), but `n_conv = sum(1 for c in convs if c is True)` uses an identity check (`is True`). If `converged` is stored as integer `1` instead of `True`, the `is True` check will return False and the task will be under-counted as not converged, even though the value is truthy.
 
-### [low/correctness] lines 160–173
+### [low/correctness] lines 228–233
 
-The `__main__` block's feedback-printing guard `if att.reviewer_feedback or att.arbiter_feedback` can also be truthy when either field is an empty list `[]` evaluated as falsy, masking cases where feedback was gathered but empty, while a `None` field on the other side still causes a `TypeError` on `len()`.
+The `aggregate` dict stores integer seed numbers as keys inside `per_seed[arm_label]` (e.g., `{1: {...}, 2: {...}, 3: {...}}`), but `json.dumps` will serialize integer keys as strings (`"1"`, `"2"`, `"3"`). Code or tooling that later reads `aggregate.json` expecting integer keys will get strings, causing potential KeyError or type mismatches.
+
+---
+
+## `eval/phase2_harness.py` (M)
+
+### [high/correctness] lines 263–266
+
+`--seed` argument parsing does not guard against a missing value when `--seed` is the last element in `args`, causing an `IndexError`.
+
+_Rationale:_ If the user passes `--seed` without a following integer (e.g., `python eval/phase2_harness.py A --seed`), `args[i + 1]` will be an out-of-bounds access and raise an unhandled `IndexError`. There is no bounds check before indexing.
+
+### [medium/correctness] lines 155–170
+
+Arms B and C both import from different `writer_reviewer` / `writer_arbiter` modules, but both use the same local name `review` and `arbitrate`. Because the imports are inside an `if`-block there is no shadowing issue at the module level; however, if `_arm_config` is ever called twice in the same process (e.g. in tests or a sweep script), the second call's imports will silently shadow the first call's local names inside Python's module import cache — this is benign due to module caching returning the correct module. The actual issue is that arm C's `arbitrate` from `writer_arbiter_typed` and arm B's `arbitrate` from `writer_arbiter` both bind to the same local name with no namespace separation, making it easy to accidentally cross-wire them in a future refactor.
+
+### [medium/correctness] lines 228–242
+
+The `seed` parameter accepted by `main()` is stored in the summary JSON and used to construct the output directory path, but it is never passed to `run_task` or any RNG seeding call. If the intent of `seed` is to make runs reproducible, it has no effect — the random state of the underlying LLM calls or any stochastic component is uncontrolled.
+
+### [medium/correctness] lines 263–266
+
+`int(args[i + 1])` will raise an unhandled `ValueError` if the token after `--seed` is not a valid integer (e.g., a task ID was accidentally passed there).
+
+_Rationale:_ There is no try/except or `str.isdigit()` guard around `int(args[i + 1])`, so a misplaced non-numeric argument silently crashes instead of producing a useful error message.
+
+### [medium/correctness] lines 271–275
+
+The budget-parsing heuristic (`a.isdigit() and budget == 3`) silently ignores an explicit `--budget 3` (or any budget token that equals the default), treating it as a task filter instead.
+
+_Rationale:_ The condition `budget == 3` means that if the user explicitly passes `3` as a budget value (which is the default), the token is treated as a task-filter string rather than consumed as the budget, and `budget` stays `3` only accidentally. More critically, a second numeric argument — e.g., an accidentally numeric task ID — would be silently dropped from `remaining` and parsed as the budget.
+
+### [low/correctness] lines 240–242
+
+The summary JSON is written to `out_dir.parent / f"seed{seed}_summary.json"` which resolves to `out_root/arm_label/seed{seed}_summary.json`, but when `out_root` is provided explicitly and contains a deeper path the parent may not be what callers expect.
+
+_Rationale:_ The summary path depends on `out_dir.parent` rather than a clearly stated constant, making it fragile if `out_dir` construction changes. This is a low-severity style/maintenance concern, but it means callers passing a custom `out_root` may be surprised by where the summary ends up.
+
+---
+
+## `eval/writer_loop.py` (M)
+
+### [low/correctness] lines 171–171
+
+The `__main__` block's `run_task` call does not pass `writer_extra_system`, so the new parameter is never exercised when running the script directly.
+
+_Rationale:_ This is a minor omission — the default value of '' is harmless and the parameter is optional — but it means command-line testing of the new Arm C behaviour is not possible without editing the script. Not a bug in production usage, but worth noting for completeness.
 
 ---

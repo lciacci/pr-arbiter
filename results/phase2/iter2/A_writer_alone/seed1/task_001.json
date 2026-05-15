@@ -1,0 +1,31 @@
+{
+  "task_id": "task_001",
+  "mode": "writer-alone",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 13,
+  "final_total": 13,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "def parse_query_string(qs: str) -> dict[str, list[str]]:\n    \"\"\"\n    Parse a URL query string into a dict mapping each key to a list of its values.\n    \n    Handles:\n    - Multiple values per key\n    - Empty values\n    - Keys without '=' treated as having empty-string value\n    - Empty input returns empty dict\n    - Percent-encoded characters decoded\n    - '+' decoded to space (form-urlencoded behavior)\n    - Stray '&' characters ignored\n    \"\"\"\n    if not qs:\n        return {}\n    \n    result: dict[str, list[str]] = {}\n    \n    # Split by '&', ignoring empty parts (handles stray &)\n    pairs = [pair for pair in qs.split('&') if pair]\n    \n    for pair in pairs:\n        if '=' in pair:\n            key, _, value = pair.partition('=')\n        else:\n            key = pair\n            value = ''\n        \n        # Decode percent-encoding and '+' -> space\n        # Replace '+' with '%20' equivalent by using urllib.parse.unquote_plus\n        from urllib.parse import unquote_plus\n        key = unquote_plus(key)\n        value = unquote_plus(value)\n        \n        if key not in result:\n            result[key] = []\n        result[key].append(value)\n    \n    return result\n",
+      "reasoning": "The spec is clear and well-defined. I implemented the function using standard string splitting on '&' and '=' (using partition to handle multiple '=' in values correctly), filtering out empty parts from stray '&' characters, and using urllib.parse.unquote_plus for decoding both percent-encoded characters and '+' to space. This handles all the specified cases: multiple values per key, empty values, keys without '=', empty input, percent-encoding, '+' decoding, and stray '&' characters.",
+      "test_signal": "13 / 13 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 13,
+      "failed": 0,
+      "errors": 0,
+      "total": 13,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}
