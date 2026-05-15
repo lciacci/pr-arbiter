@@ -1,0 +1,271 @@
+{
+  "task_id": "task_009",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 2,
+  "final_passed": 16,
+  "final_total": 16,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 009 \u2014 Bounded-time event scheduler\n\"\"\"\n\nimport time\nimport heapq\n\n\nclass Scheduler:\n    def __init__(self, clock=None):\n        self._clock = clock if clock is not None else time.monotonic\n        self._current_time = self._clock()\n        self._counter = 0  # monotonically increasing event ID counter\n        self._heap = []    # min-heap of (when, event_id, callback, args, kwargs)\n        self._cancelled = set()  # set of cancelled event IDs\n\n    def schedule(self, when: float, callback, *args, **kwargs) -> int:\n        self._counter += 1\n        event_id = self._counter\n        heapq.heappush(self._heap, (when, event_id, callback, args, kwargs))\n        return event_id\n\n    def cancel(self, event_id: int) -> bool:\n        \"\"\"\n        Cancel a pending event. Returns True if the event was pending and\n        is now cancelled, False if it was already fired, already cancelled,\n        or never existed.\n        \n        We use lazy deletion: mark as cancelled and skip when popped.\n        \"\"\"\n        # Check if event_id is valid (was ever scheduled)\n        if event_id < 1 or event_id > self._counter:\n            return False\n        # Check if already cancelled or fired\n        if event_id in self._cancelled:\n            return False\n        # Check if it's still in the heap (not yet fired)\n        # We use lazy deletion - just add to cancelled set\n        # But we need to know if it's still pending (not fired)\n        # We track fired events by removing from a \"pending\" set\n        # Actually, we need a way to distinguish fired vs cancelled vs never existed\n        # Let's maintain a set of pending event IDs\n        if event_id in self._pending:\n            self._cancelled.add(event_id)\n            self._pending.discard(event_id)\n            return True\n        return False\n\n    def run_until(self, deadline: float) -> int:\n        fired_count = 0\n        \n        while self._heap:\n            when, event_id, callback, args, kwargs = self._heap[0]\n            \n            if when > deadline:\n                break\n            \n            # Pop the event\n            heapq.heappop(self._heap)\n            \n            # Skip cancelled events\n            if event_id in self._cancelled:\n                continue\n            \n            # Remove from pending\n            self._pending.discard(event_id)\n            \n            # Update current time to event's scheduled time\n            self._current_time = when\n            \n            # Fire the callback\n            callback(*args, **kwargs)\n            fired_count += 1\n        \n        # After all eligible events, advance time to deadline\n        self._current_time = deadline\n        return fired_count\n\n    def time(self) -> float:\n        return self._current_time\n\n    def schedule(self, when: float, callback, *args, **kwargs) -> int:\n        self._counter += 1\n        event_id = self._counter\n        self._pending.add(event_id)\n        heapq.heappush(self._heap, (when, event_id, callback, args, kwargs))\n        return event_id\n",
+      "reasoning": "I noticed I have a bug - I defined schedule twice and I'm referencing self._pending before it's initialized. Let me redo this properly.",
+      "test_signal": "2 / 16 tests passing",
+      "reviewer_feedback": [
+        {
+          "line_range": [
+            1,
+            70
+          ],
+          "category": "correctness",
+          "severity": "critical",
+          "description": "`self._pending` is never initialized in `__init__`, causing an `AttributeError` on any call to `cancel` or `schedule`.",
+          "rationale": "The `__init__` method sets up `self._cancelled` and `self._heap` but never creates `self._pending`. The second `schedule` definition (lines 62\u201370) and `cancel` both reference `self._pending`, which will raise `AttributeError` at runtime on any non-trivial use. Add `self._pending = set()` in `__init__`."
+        },
+        {
+          "line_range": [
+            17,
+            22
+          ],
+          "category": "correctness",
+          "severity": "critical",
+          "description": "The first `schedule` definition (lines 17\u201322) is silently shadowed by the second `schedule` definition (lines 62\u201370). Python overwrites the first method with the second, so the first definition is dead code.",
+          "rationale": "Python classes allow duplicate method names; the last one wins. The first `schedule` (lines 17\u201322) does NOT add to `self._pending`, and the second `schedule` (lines 62\u201370) DOES. Because the second definition overwrites the first, only the second is active \u2014 but if `_pending` is never initialized in `__init__`, it still crashes. Remove the duplicate first `schedule` definition entirely and keep only the second one (after fixing `_pending` initialization)."
+        },
+        {
+          "line_range": [
+            27,
+            47
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "description": "`cancel` never checks whether the event_id has already been fired. It only checks `_cancelled` and `_pending`, but fired events are removed from `_pending` (in `run_until`, line 53) without being recorded anywhere else. So after an event fires, `cancel` will reach the final `return False` correctly \u2014 but only by accident. If the fired-event tracking logic ever changes, this silently breaks.",
+          "rationale": "The spec requires `cancel` to return `False` if the event was already fired. Currently, fired events are removed from `_pending` and not added to `_cancelled`, so `cancel` returns `False` for them (falls through). This is correct in the current code but fragile. Consider maintaining a `_fired` set for clarity, though strictly speaking the current logic happens to be correct once `_pending` is initialized."
+        },
+        {
+          "line_range": [
+            62,
+            70
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "description": "Events scheduled by a callback (re-entrant `schedule` during `run_until`) are pushed onto `self._heap`, but the `run_until` loop checks `self._heap[0]` via the heap invariant. Newly pushed events with `when <= current deadline` should fire in the same `run_until` call if their `when <= current scheduler time`. The spec says: 'Events scheduled by a callback for a time at or before the current run's deadline must fire in the same `run_until` invocation if their `when` is at or before the current scheduler time.' The current loop will pick them up only if their `when <= deadline`, but the spec also requires `when <= current scheduler time` (not just deadline) for immediate re-entrant firing. The loop processes all `when <= deadline`, which is a superset \u2014 so this may be fine for the basic case, but the loop condition `when > deadline` breaks correctly. This appears to match spec behavior, but verify that re-entrant events with `when` between current scheduler time and deadline also fire (the spec says they should fire in the same invocation if `when <= deadline`, regardless of whether `when <= current scheduler time`). Actually re-reading: the spec says they fire 'if their when is at or before the current scheduler time' \u2014 meaning only if `when <= self._current_time` at the point of the callback. Events with `when` between `self._current_time` and `deadline` fire later in the same loop iteration, which satisfies the spec since the loop continues advancing time. This is fine.",
+          "rationale": "On further analysis the loop handles re-entrant scheduling correctly since it keeps iterating. This finding is informational \u2014 no code change needed here."
+        },
+        {
+          "line_range": [
+            48,
+            60
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "description": "In `run_until`, cancelled events popped from the heap are skipped (line 51) but `self._pending.discard(event_id)` is only called on line 53 for non-cancelled events. Cancelled events are not discarded from `_pending` in `run_until`, but that's okay because `cancel` already calls `_pending.discard`. However, events that were never in `_pending` (impossible with the corrected code) \u2014 this is fine once `_pending` is properly initialized.",
+          "rationale": "Minor: when a cancelled event is popped from the heap in `run_until` (line 51, `continue` branch), `_pending.discard` is not called. Since `cancel` already removes it from `_pending`, this is not a bug. No action needed."
+        },
+        {
+          "line_range": [
+            9,
+            14
+          ],
+          "category": "correctness",
+          "severity": "critical",
+          "description": "`self._pending` is missing from `__init__`. This will cause `AttributeError` on the first call to `schedule` (the active second definition on line 64) and on `cancel`.",
+          "rationale": "Add `self._pending = set()` inside `__init__` alongside `self._cancelled = set()`. Without it, every method that references `self._pending` will crash with `AttributeError: 'Scheduler' object has no attribute '_pending'`."
+        }
+      ],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            17,
+            22
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "description": "The first (dead) `schedule` definition does not pass `*args` and `**kwargs` through to `heapq.heappush` correctly \u2014 it stores `args` and `kwargs` as positional items in the tuple, which is the same structure as the second definition, so this is not a new bug here. However, both definitions store `kwargs` as a dict in a heap tuple. If two events share the same `when` and `event_id` (impossible), comparison would fall through to comparing `callback`, then `args`, then `kwargs`. Comparing arbitrary `kwargs` dicts or non-comparable `args` tuples will raise `TypeError` at heap insertion time when `when` and `event_id` are equal \u2014 but since `event_id` is unique and monotonically increasing, ties on `(when, event_id)` never occur, so this is not a real issue in practice.",
+          "rationale": "Non-issue given unique event_id. Noting for completeness \u2014 no action needed."
+        },
+        {
+          "line_range": [
+            48,
+            60
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "description": "The spec says: 'Events scheduled by a callback for a time at or before the current run's deadline must fire in the same `run_until` invocation **if their `when` is at or before the current scheduler time**.' The `run_until` loop fires ALL events with `when <= deadline`, including those with `when` strictly between `self._current_time` (at the moment the callback ran) and `deadline`. This is actually broader than what the spec mandates for re-entrant events \u2014 but the spec's basic (non-re-entrant) behavior requires firing all `when <= deadline`, so the loop is correct for normal events. For re-entrant events the spec only *requires* firing if `when <= current scheduler time`; firing them up to `deadline` is a superset and not prohibited. No bug.",
+          "rationale": "Informational \u2014 loop behavior is a superset of spec requirement, not a violation."
+        },
+        {
+          "line_range": [
+            27,
+            35
+          ],
+          "category": "correctness",
+          "severity": "critical",
+          "description": "`cancel` checks `event_id < 1 or event_id > self._counter` to detect never-existed IDs, but `self._counter` is mutated by `schedule`. If `cancel` is called with a valid-range ID that was never actually scheduled (impossible through normal API since IDs are assigned sequentially), this guard would incorrectly return `False` before checking `_pending`. More critically: if a user calls `cancel(0)` the guard correctly returns `False`. However, if `cancel` is called with a negative integer, `event_id < 1` catches it. This logic is fine. The real missed bug: `cancel` checks `if event_id in self._cancelled` before checking `if event_id in self._pending`, and returns `False` for already-cancelled IDs. But if `cancel` is called on an event_id that was previously passed to `cancel` and cancelled, it returns `False` \u2014 correct per spec. No new bug here.",
+          "rationale": "Logic is correct for these paths. No action needed."
+        },
+        {
+          "line_range": [
+            48,
+            60
+          ],
+          "category": "correctness",
+          "severity": "critical",
+          "description": "After `run_until` fires an event (line 56, `callback(*args, **kwargs)`), if the callback raises an exception, `fired_count` is not incremented, `self._current_time` is already updated (line 54), and the exception propagates \u2014 leaving the scheduler in a partially-advanced state. Subsequent `run_until` calls will not re-fire the event (it was already popped from the heap and removed from `_pending`), so the event is silently lost without being counted. The spec does not address exception handling, but this is a correctness concern under normal use where callbacks can raise.",
+          "rationale": "If `callback(*args, **kwargs)` raises, `fired_count += 1` on line 57 is skipped, but the event was already consumed. The return value will undercount fired events, and the scheduler clock is left at the failed event's `when` rather than `deadline`. Medium severity since spec doesn't define behavior on callback exceptions, but worth noting."
+        },
+        {
+          "line_range": [
+            9,
+            14
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "description": "`self._current_time` is initialized to `self._clock()` at construction time. The spec says 'Before any `run_until` call, this equals `clock()` at construction time' \u2014 so this is correct. However, if the clock is non-monotonic or reset between construction and first `run_until`, `deadline` passed to `run_until` could be less than `self._current_time`. The scheduler will still fire all events with `when <= deadline` (which could be zero events), then set `self._current_time = deadline`, potentially moving time *backward*. The spec does not prohibit this, but it is a subtle behavior: `time()` can decrease if `deadline < self._current_time`. No spec violation since the spec doesn't constrain `deadline` values, but callers may be surprised.",
+          "rationale": "Low-severity design note. The spec doesn't say deadlines must be non-decreasing, so this is not a bug per spec."
+        },
+        {
+          "line_range": [
+            62,
+            70
+          ],
+          "category": "correctness",
+          "severity": "critical",
+          "description": "The second (active) `schedule` definition stores `kwargs` directly in the heap tuple: `(when, event_id, callback, args, kwargs)`. If two events have the same `when` value, Python's `heapq` will compare the next element `event_id`, which is always unique \u2014 so comparison never falls through to `callback`, `args`, or `kwargs`. This is safe. However, if `when` values are equal and somehow `event_id` values were equal (impossible), comparison of `callback` objects (which may not support `<`) would raise `TypeError`. Since `event_id` is guaranteed unique, this is not a real bug.",
+          "rationale": "Not a real bug given unique event_ids. Confirmed safe."
+        },
+        {
+          "line_range": [
+            48,
+            60
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "description": "The spec states: 'Events scheduled by a callback for a time at or before the current run's deadline must fire in the same `run_until` invocation if their `when` is at or before the current scheduler time.' The implementation does fire re-entrant events if `when <= deadline` via the outer `while self._heap` loop. But consider a re-entrant event scheduled with `when` exactly equal to `deadline`: the loop condition is `when > deadline` (breaks), so `when == deadline` does NOT break \u2014 it fires. This is consistent with the main spec ('firing all pending events with `when <= deadline`'). Correct behavior.",
+          "rationale": "Boundary condition is handled correctly \u2014 `when == deadline` fires as required."
+        },
+        {
+          "line_range": [
+            27,
+            47
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "description": "The `cancel` method checks `if event_id in self._pending` to determine if the event is still cancellable. However, during a `run_until` call, an event is removed from `self._pending` (line 53: `self._pending.discard(event_id)`) *before* the callback is invoked (line 56). This means if a callback calls `cancel` on its own event_id (or any event_id that was just fired in this tick), `cancel` will return `False` rather than `True` \u2014 which is actually correct per spec ('already fired'). But more importantly: if a callback calls `cancel` on a *different* event that has already been popped from the heap and fired in the same `run_until` call, `cancel` returns `False` \u2014 correct. No bug here.",
+          "rationale": "The ordering of `_pending.discard` before `callback()` is intentional and correct."
+        },
+        {
+          "line_range": [
+            27,
+            47
+          ],
+          "category": "correctness",
+          "severity": "critical",
+          "description": "The `cancel` method checks `if event_id in self._cancelled` and returns `False` for already-cancelled IDs. But it does NOT add the event_id to `self._cancelled` when an event is successfully cancelled \u2014 wait, it does: `self._cancelled.add(event_id)` on line 43. However, `self._cancelled` is also used in `run_until` (line 51) for lazy deletion. Once an event is cancelled and the heap entry is eventually popped in `run_until`, the event_id remains in `self._cancelled` forever. This set grows unboundedly and is never pruned. For long-lived schedulers with many cancelled events, this is a memory leak. Not a correctness bug per spec, but a resource issue.",
+          "rationale": "Low severity memory concern: `_cancelled` set grows without bound. Could add cleanup when the cancelled heap entry is finally popped. Not a spec violation."
+        }
+      ]
+    },
+    {
+      "code": "\"\"\"\nTask 009 \u2014 Bounded-time event scheduler\n\"\"\"\n\nimport time\nimport heapq\n\n\nclass Scheduler:\n    def __init__(self, clock=None):\n        self._clock = clock if clock is not None else time.monotonic\n        self._current_time = self._clock()\n        self._counter = 0  # monotonically increasing event ID counter\n        self._heap = []    # min-heap of (when, event_id, callback, args, kwargs)\n        self._cancelled = set()  # set of cancelled event IDs\n        self._pending = set()    # set of event IDs that are still pending (not fired, not cancelled)\n\n    def schedule(self, when: float, callback, *args, **kwargs) -> int:\n        \"\"\"\n        Schedule callback(*args, **kwargs) to fire at absolute time `when`.\n        Returns a unique positive integer event_id.\n        \"\"\"\n        self._counter += 1\n        event_id = self._counter\n        self._pending.add(event_id)\n        heapq.heappush(self._heap, (when, event_id, callback, args, kwargs))\n        return event_id\n\n    def cancel(self, event_id: int) -> bool:\n        \"\"\"\n        Cancel a pending event. Returns True if the event was pending and\n        is now cancelled, False if it was already fired, already cancelled,\n        or never existed.\n        \"\"\"\n        # Check if event_id was never scheduled\n        if event_id < 1 or event_id > self._counter:\n            return False\n        # Check if still pending (not fired and not already cancelled)\n        if event_id in self._pending:\n            self._cancelled.add(event_id)\n            self._pending.discard(event_id)\n            return True\n        # Already fired or already cancelled\n        return False\n\n    def run_until(self, deadline: float) -> int:\n        \"\"\"\n        Advance the scheduler, firing all pending events with when <= deadline\n        in order of (when, event_id). Returns the number of events fired.\n        \"\"\"\n        fired_count = 0\n\n        while self._heap:\n            when, event_id, callback, args, kwargs = self._heap[0]\n\n            if when > deadline:\n                break\n\n            # Pop the event\n            heapq.heappop(self._heap)\n\n            # Skip cancelled events (lazy deletion)\n            if event_id in self._cancelled:\n                # Clean up from cancelled set to avoid unbounded growth\n                self._cancelled.discard(event_id)\n                continue\n\n            # Remove from pending (mark as fired)\n            self._pending.discard(event_id)\n\n            # Update current time to event's scheduled time\n            self._current_time = when\n\n            # Fire the callback\n            callback(*args, **kwargs)\n            fired_count += 1\n\n        # After all eligible events, advance time to deadline\n        self._current_time = deadline\n        return fired_count\n\n    def time(self) -> float:\n        \"\"\"Returns the scheduler's current notion of time.\"\"\"\n        return self._current_time\n",
+      "reasoning": "The main issue in attempt 1 was that `self._pending` was never initialized in `__init__`, and there were two `schedule` method definitions (the first was dead code). I've fixed both issues:\n\n1. Added `self._pending = set()` in `__init__`\n2. Removed the duplicate (dead) first `schedule` definition, keeping only the correct one that adds to `_pending`\n3. Fixed lazy deletion cleanup in `run_until` to also discard from `_cancelled` when the cancelled event is finally popped, preventing unbounded growth\n4. The logic for `cancel` correctly checks `_pending` to determine if an event is still cancellable\n\nThe re-entrant scheduling behavior is handled correctly by the `while self._heap` loop which continues checking for new events (including those pushed by callbacks) as long as their `when <= deadline`.",
+      "test_signal": "16 / 16 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 2,
+      "failed": 14,
+      "errors": 0,
+      "total": 16,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_schedule_returns_unique_ids",
+          "outcome": "failed",
+          "longrepr": "tests.py:15: in test_schedule_returns_unique_ids\n    a = s.schedule(1.0, lambda: None)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_runs_in_time_order",
+          "outcome": "failed",
+          "longrepr": "tests.py:25: in test_runs_in_time_order\n    s.schedule(10.0, lambda: log.append(\"a\"))\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_returns_fire_count",
+          "outcome": "failed",
+          "longrepr": "tests.py:33: in test_returns_fire_count\n    s.schedule(1.0, lambda: None)\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_events_past_deadline_stay_pending",
+          "outcome": "failed",
+          "longrepr": "tests.py:42: in test_events_past_deadline_stay_pending\n    s.schedule(10.0, lambda: log.append(\"a\"))\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_time_during_callback_reflects_scheduled_when",
+          "outcome": "failed",
+          "longrepr": "tests.py:59: in test_time_during_callback_reflects_scheduled_when\n    s.schedule(10.0, lambda: seen_times.append(s.time()))\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_cancel_pending_event",
+          "outcome": "failed",
+          "longrepr": "tests.py:68: in test_cancel_pending_event\n    eid = s.schedule(10.0, lambda: log.append(\"a\"))\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_cancel_already_fired_returns_false",
+          "outcome": "failed",
+          "longrepr": "tests.py:76: in test_cancel_already_fired_returns_false\n    eid = s.schedule(5.0, lambda: None)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_cancel_twice_second_returns_false",
+          "outcome": "failed",
+          "longrepr": "tests.py:88: in test_cancel_twice_second_returns_false\n    eid = s.schedule(5.0, lambda: None)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_past_event_fires_on_next_run",
+          "outcome": "failed",
+          "longrepr": "tests.py:97: in test_past_event_fires_on_next_run\n    s.schedule(50.0, lambda: log.append(\"past\"))  # scheduled in the past\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_callback_can_schedule_new_event_in_same_run",
+          "outcome": "failed",
+          "longrepr": "tests.py:110: in test_callback_can_schedule_new_event_in_same_run\n    s.schedule(5.0, first)\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_callback_scheduling_past_deadline_stays_pending",
+          "outcome": "failed",
+          "longrepr": "tests.py:123: in test_callback_scheduling_past_deadline_stays_pending\n    s.schedule(5.0, first)\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_ties_broken_by_schedule_order",
+          "outcome": "failed",
+          "longrepr": "tests.py:132: in test_ties_broken_by_schedule_order\n    s.schedule(5.0, lambda: log.append(\"first\"))\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_callback_with_args_and_kwargs",
+          "outcome": "failed",
+          "longrepr": "tests.py:142: in test_callback_with_args_and_kwargs\n    s.schedule(1.0, lambda x, y: log.append((x, y)), 10, y=20)\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        },
+        {
+          "nodeid": "tests.py::test_callback_can_cancel_other_pending",
+          "outcome": "failed",
+          "longrepr": "tests.py:156: in test_callback_can_cancel_other_pending\n    s.schedule(5.0, first)\nsolution.py:85: in schedule\n    self._pending.add(event_id)\n    ^^^^^^^^^^^^^\nE   AttributeError: 'Scheduler' object has no attribute '_pending'"
+        }
+      ]
+    },
+    {
+      "passed": 16,
+      "failed": 0,
+      "errors": 0,
+      "total": 16,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "task_id": "task_012",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 11,
+  "final_total": 11,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterpretation notes:\n- Support ISO format (YYYY-MM-DD), US format (MM/DD/YYYY), European format (DD.MM.YYYY),\n  long month name format (\"March 15, 2024\"), abbreviated month (\"Mar 15, 2024\"),\n  and other common variants.\n- Return (year, month, day) as integers.\n- Raise ValueError for unparseable input.\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n\nMONTH_NAMES = {\n    'january': 1, 'jan': 1,\n    'february': 2, 'feb': 2,\n    'march': 3, 'mar': 3,\n    'april': 4, 'apr': 4,\n    'may': 5,\n    'june': 6, 'jun': 6,\n    'july': 7, 'jul': 7,\n    'august': 8, 'aug': 8,\n    'september': 9, 'sep': 9, 'sept': 9,\n    'october': 10, 'oct': 10,\n    'november': 11, 'nov': 11,\n    'december': 12, 'dec': 12,\n}\n\n# Ordered list of (format_string, ...) to try with strptime\nSTRPTIME_FORMATS = [\n    \"%Y-%m-%d\",       # 2024-03-15\n    \"%Y/%m/%d\",       # 2024/03/15\n    \"%Y.%m.%d\",       # 2024.03.15\n    \"%m/%d/%Y\",       # 03/15/2024\n    \"%d/%m/%Y\",       # 15/03/2024  (ambiguous with above; try US first)\n    \"%m-%d-%Y\",       # 03-15-2024\n    \"%d-%m-%Y\",       # 15-03-2024\n    \"%d.%m.%Y\",       # 15.03.2024\n    \"%B %d, %Y\",      # March 15, 2024\n    \"%B %d %Y\",       # March 15 2024\n    \"%b %d, %Y\",      # Mar 15, 2024\n    \"%b %d %Y\",       # Mar 15 2024\n    \"%d %B %Y\",       # 15 March 2024\n    \"%d %b %Y\",       # 15 Mar 2024\n    \"%B %d, %Y\",      # March 15, 2024 (duplicate for safety)\n    \"%Y%m%d\",         # 20240315\n]\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s)}\")\n\n    s = s.strip()\n    if not s:\n        raise ValueError(\"Empty string cannot be parsed as a date\")\n\n    # Try strptime formats\n    for fmt in STRPTIME_FORMATS:\n        try:\n            dt = datetime.strptime(s, fmt)\n            return (dt.year, dt.month, dt.day)\n        except ValueError:\n            continue\n\n    # Try regex-based parsing for \"Month DD, YYYY\" or \"DD Month YYYY\" etc.\n    # Pattern: word month + number day + number year (various separators/orders)\n    month_pattern = '|'.join(sorted(MONTH_NAMES.keys(), key=len, reverse=True))\n\n    # \"Month Day, Year\" or \"Month Day Year\"\n    m = re.fullmatch(\n        rf'({month_pattern})[,.\\s]+(\\d{{1,2}})[,.\\s]+(\\d{{4}})',\n        s, re.IGNORECASE\n    )\n    if m:\n        month = MONTH_NAMES[m.group(1).lower()]\n        day = int(m.group(2))\n        year = int(m.group(3))\n        return _validate(year, month, day)\n\n    # \"Day Month Year\"\n    m = re.fullmatch(\n        rf'(\\d{{1,2}})[,.\\s]+({month_pattern})[,.\\s]+(\\d{{4}})',\n        s, re.IGNORECASE\n    )\n    if m:\n        day = int(m.group(1))\n        month = MONTH_NAMES[m.group(2).lower()]\n        year = int(m.group(3))\n        return _validate(year, month, day)\n\n    # \"Year Month Day\" with word month\n    m = re.fullmatch(\n        rf'(\\d{{4}})[,.\\s]+({month_pattern})[,.\\s]+(\\d{{1,2}})',\n        s, re.IGNORECASE\n    )\n    if m:\n        year = int(m.group(1))\n        month = MONTH_NAMES[m.group(2).lower()]\n        day = int(m.group(3))\n        return _validate(year, month, day)\n\n    raise ValueError(f\"Unable to parse date string: {s!r}\")\n\n\ndef _validate(year: int, month: int, day: int) -> tuple[int, int, int]:\n    \"\"\"Validate that year/month/day form a real calendar date.\"\"\"\n    # Use datetime to validate\n    try:\n        datetime(year, month, day)\n    except ValueError as e:\n        raise ValueError(f\"Invalid date: year={year}, month={month}, day={day}: {e}\") from e\n    return (year, month, day)\n",
+      "reasoning": "\nThe spec asks for a `parse_date(s: str) -> tuple[int, int, int]` function that parses common human-readable date strings and returns (year, month, day). It must be robust to common formats and raise ValueError for unparseable input.\n\nI implemented this by:\n1. Trying a list of strptime format strings covering ISO (YYYY-MM-DD), US (MM/DD/YYYY), European (DD.MM.YYYY), long/short month name formats, etc.\n2. Falling back to regex-based parsing for additional variants with word-based month names.\n3. Using a `_validate` helper that calls `datetime(year, month, day)` to catch invalid dates (e.g., Feb 30).\n4. Raising ValueError for empty strings, non-string input, and unparseable strings.\n\nThe two spec examples are covered: \"2024-03-15\" matches the first strptime format, and \"March 15, 2024\" matches the \"%B %d, %Y\" strptime format.\n",
+      "test_signal": "11 / 11 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "total": 11,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

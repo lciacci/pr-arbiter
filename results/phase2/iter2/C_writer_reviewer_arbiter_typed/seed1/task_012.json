@@ -1,0 +1,321 @@
+{
+  "task_id": "task_012",
+  "mode": "writer+reviewer+arbiter",
+  "converged": false,
+  "iterations": 3,
+  "final_passed": 10,
+  "final_total": 11,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets common human-readable date formats and returns (year, month, day).\nRaises ValueError for input that cannot be parsed.\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n\n# Ordered list of format strings to try with strptime\n_FORMATS = [\n    # ISO / numeric formats\n    \"%Y-%m-%d\",       # 2024-03-15\n    \"%Y/%m/%d\",       # 2024/03/15\n    \"%Y.%m.%d\",       # 2024.03.15\n    \"%d-%m-%Y\",       # 15-03-2024\n    \"%d/%m/%Y\",       # 15/03/2024\n    \"%d.%m.%Y\",       # 15.03.2024\n    \"%m-%d-%Y\",       # 03-15-2024\n    \"%m/%d/%Y\",       # 03/15/2024\n    \"%m.%d.%Y\",       # 03.15.2024\n    # Written month formats\n    \"%B %d, %Y\",      # March 15, 2024\n    \"%B %d %Y\",       # March 15 2024\n    \"%b %d, %Y\",      # Mar 15, 2024\n    \"%b %d %Y\",       # Mar 15 2024\n    \"%d %B %Y\",       # 15 March 2024\n    \"%d %b %Y\",       # 15 Mar 2024\n    \"%B %d, %Y\",      # March 15, 2024  (duplicate \u2014 harmless)\n    \"%d-%B-%Y\",       # 15-March-2024\n    \"%d-%b-%Y\",       # 15-Mar-2024\n    # With time components (ignore time, keep date)\n    \"%Y-%m-%dT%H:%M:%S\",\n    \"%Y-%m-%d %H:%M:%S\",\n    \"%Y-%m-%dT%H:%M:%S.%f\",\n]\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s).__name__!r}\")\n\n    s_stripped = s.strip()\n    if not s_stripped:\n        raise ValueError(\"Empty date string\")\n\n    for fmt in _FORMATS:\n        try:\n            dt = datetime.strptime(s_stripped, fmt)\n            return (dt.year, dt.month, dt.day)\n        except ValueError:\n            continue\n\n    # Last-ditch: try dateutil if available (stdlib only per rules, so skip)\n    raise ValueError(f\"Unable to parse date string: {s!r}\")\n",
+      "reasoning": "The spec asks for a function that parses common human-readable date strings into (year, month, day) tuples and raises ValueError for unparseable input. I implemented this using datetime.strptime with an ordered list of common format strings covering ISO numeric formats (YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY, etc.) and written-month formats (March 15, 2024; 15 March 2024; etc.). The two explicit examples from the spec (\"2024-03-15\" and \"March 15, 2024\") are covered by \"%Y-%m-%d\" and \"%B %d, %Y\" respectively. I handle edge cases: non-string input raises ValueError, empty strings raise ValueError, and any unrecognized format raises ValueError. Stdlib only as required.",
+      "test_signal": "10 / 11 tests passing",
+      "reviewer_feedback": [
+        {
+          "line_range": [
+            30,
+            42
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "Ambiguous numeric formats (%d-%m-%Y, %m-%d-%Y, etc.) are tried in an order that will mis-parse many valid dates. For example, '03-15-2024' (MM-DD-YYYY) would first be attempted as %d-%m-%Y (DD-MM-YYYY), which fails only because 15 is not a valid month \u2014 but '01-03-2024' would be parsed as January 3rd instead of March 1st depending on which format is tried first.",
+          "rationale": "The spec says the function should be 'robust to common formats users might type', but the current ordering of numeric formats with the same separator can silently produce wrong results for ambiguous inputs. The listed spec examples only use unambiguous formats (ISO and written-month), but if the test suite includes any DD/MM or MM/DD inputs where both parts are \u2264 12, the wrong format will be chosen silently. Consider documenting or testing which interpretation is canonical, or requiring the written-month form for ambiguous cases.",
+          "proposed_interpretation": "Prioritize ISO (YYYY-MM-DD) and written-month formats (which are unambiguous) and either reject ambiguous numeric-only formats or pick one canonical interpretation (e.g. MM/DD/YYYY for slash, YYYY-MM-DD for dash).",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            30,
+            42
+          ],
+          "category": "spec-ambiguity",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The spec only shows two examples: ISO (YYYY-MM-DD) and 'Month DD, YYYY'. The spec is silent on which other formats are expected to work. The writer has added many formats (%d-%m-%Y, %m/%d/%Y, datetime with time components, etc.) that may or may not be tested. This is fine if they don't break the two specified examples, but the ordering risks silent mis-parsing.",
+          "rationale": "Because the spec says 'robust to common formats', additional formats are reasonable, but the writer should be aware that non-specified formats could be tested and the current ordering may conflict.",
+          "proposed_interpretation": "Ensure the two spec-mandated examples parse correctly (they do), and be cautious with added formats that could conflict.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            50,
+            52
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "The isinstance check raises ValueError for non-string input, but the function signature already declares `s: str`. However, the spec says 'Raise ValueError for input that cannot be parsed as a date' \u2014 it's reasonable, but passing None or an int would hit this branch.",
+          "rationale": "This is actually compliant with the spec. No real issue here beyond style.",
+          "spec_quote": "Raise ValueError for input that cannot be parsed as a date.",
+          "spec_quote_found_in_spec": false,
+          "downgraded_reason": "spec-violation with spec_quote not found in spec"
+        }
+      ],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            30,
+            42
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The two spec-mandated examples both parse correctly in isolation, but the format list contains a duplicate entry: `\"%B %d, %Y\"` appears at index 9 and again at index 15. This is harmless for correctness of the spec examples but indicates a copy-paste error and wastes an iteration. More importantly, `\"%d-%m-%Y\"` (DD-MM-YYYY) is listed before `\"%m-%d-%Y\"` (MM-DD-YYYY), so `\"03-15-2024\"` (a clearly MM-DD-YYYY string) correctly fails `%d-%m-%Y` (15 is not a valid month) and then succeeds as `%m-%d-%Y`, returning `(2024, 3, 15)`. However `\"01-03-2024\"` is silently parsed as January 3rd (DD-MM) when the user may have meant March 1st (MM-DD). This silent mis-parse on a subset of otherwise-valid inputs undermines the 'robust' requirement.",
+          "rationale": "The duplicate at line 40 (`\"%B %d, %Y\"`) is a direct code defect. The ordering issue causing silent wrong-date parsing for dates where both day and month are \u226412 with a dash separator is a distinct mechanism from what the first reviewer described (they focused on the ordering decision; this highlights that `\"01-03-2024\"` silently returns the wrong answer with no error raised, which is worse than rejection).",
+          "spec_quote": "Raise ValueError for input that cannot be parsed as a date.",
+          "spec_quote_found_in_spec": false,
+          "downgraded_reason": "spec-violation with spec_quote not found in spec"
+        },
+        {
+          "line_range": [
+            57,
+            59
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The formats list includes datetime-with-time formats (`\"%Y-%m-%dT%H:%M:%S\"`, `\"%Y-%m-%d %H:%M:%S\"`, `\"%Y-%m-%dT%H:%M:%S.%f\"`) but does NOT include the corresponding formats with timezone offsets (e.g., `\"2024-03-15T10:30:00+05:30\"` or `\"2024-03-15T10:30:00Z\"`). `datetime.strptime` does not handle `Z` or `+HH:MM` without `%z`, and `strptime` with `%z` on Python < 3.7 is unreliable. If a user passes an ISO 8601 datetime string with a timezone suffix, the function will raise `ValueError` even though the date portion is unambiguous. The spec says the function should be 'robust to common formats users might type' \u2014 ISO 8601 with timezone is a very common format.",
+          "rationale": "The writer added datetime formats specifically to handle timestamps but stopped short of the most common real-world variant (timezone-aware ISO 8601). This is a gap in the 'robustness' claim.",
+          "proposed_interpretation": "Either add `\"%Y-%m-%dT%H:%M:%S%z\"` and `\"%Y-%m-%dT%H:%M:%S.%f%z\"` to the formats list, or strip a trailing timezone suffix (e.g., `Z`, `+HH:MM`) before trying strptime.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            47,
+            59
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The function does not normalize locale-sensitive month names. `datetime.strptime` with `%B` or `%b` uses the current locale's month names. On a non-English locale system, `\"March 15, 2024\"` \u2014 the exact spec example \u2014 would fail to parse and the function would raise `ValueError`, violating the spec's concrete example.",
+          "rationale": "Lines 43\u201348 rely entirely on `datetime.strptime` for month-name parsing. If the running locale is not English (e.g., French, German), `%B` matches locale month names, not English ones. The spec example `parse_date(\"March 15, 2024\")` would then raise `ValueError`. A locale-independent approach (e.g., a hardcoded month-name dict, or temporarily forcing locale to C/en) is needed for guaranteed correctness.",
+          "proposed_interpretation": "Use a hardcoded English month name dict or temporarily set `locale.LC_TIME` to `'C'` before calling `strptime`, then restore it.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            43,
+            60
+          ],
+          "category": "correctness",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "No year-two-digit handling is present. A user typing `\"03/15/24\"` or `\"15 Mar 24\"` will get a `ValueError`. While not in the spec examples, two-digit years are a 'common format users might type'. The function provides no mapping (e.g., via `%y`) and strptime's `%y` interpretation (pivot year: 69 \u2192 1969, 00 \u2192 2000) may or may not be desired. The lack of any handling \u2014 even to explicitly reject with a clear message \u2014 is a minor robustness gap.",
+          "rationale": "The spec says 'robust to common formats'; two-digit years are a commonly encountered format. This is advisory.",
+          "proposed_interpretation": "Add formats with `%y` (two-digit year) or document that two-digit years are not supported.",
+          "spec_quote_found_in_spec": null
+        }
+      ]
+    },
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets common human-readable date formats and returns (year, month, day).\nRaises ValueError for input that cannot be parsed.\n\nDesign decisions:\n- Month names are matched with a hardcoded English dict to avoid locale issues.\n- Ambiguous numeric-only formats (where both DD and MM could be \u226412) are\n  handled by preferring YYYY-MM-DD (ISO), then MM/DD/YYYY for slash-separated,\n  and MM-DD-YYYY for dash-separated (US convention matches the spec examples).\n  The %d-%m-%Y (DD-MM) order is NOT used to avoid silent mis-parses.\n- Timezone suffixes in ISO 8601 datetimes are stripped before parsing.\n- Two-digit years are supported via %y (Python pivot: 00\u201368 \u2192 2000\u20132068,\n  69\u201399 \u2192 1969\u20131999).\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n\n# Hardcoded English month names for locale-independent parsing\n_MONTHS_LONG = {\n    'january': 1, 'february': 2, 'march': 3, 'april': 4,\n    'may': 5, 'june': 6, 'july': 7, 'august': 8,\n    'september': 9, 'october': 10, 'november': 11, 'december': 12,\n}\n_MONTHS_SHORT = {\n    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,\n    'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,\n    'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,\n}\n_ALL_MONTHS = {**_MONTHS_LONG, **_MONTHS_SHORT}\n\n\ndef _try_written_month(s: str):\n    \"\"\"\n    Try to parse a string that contains a written month name (English).\n    Handles formats like:\n      'March 15, 2024', 'Mar 15, 2024', '15 March 2024', '15 Mar 2024',\n      'March 15 2024', '15-March-2024', '15-Mar-2024',\n      and two-digit year variants.\n    Returns (year, month, day) or None.\n    \"\"\"\n    # Normalise separators to spaces, remove commas\n    normalized = re.sub(r'[,\\-/.]', ' ', s).strip()\n    tokens = normalized.split()\n    if len(tokens) < 3:\n        return None\n\n    # Try to find which token is the month name\n    for i, token in enumerate(tokens):\n        month_num = _ALL_MONTHS.get(token.lower())\n        if month_num is not None:\n            remaining = [tokens[j] for j in range(len(tokens)) if j != i]\n            if len(remaining) < 2:\n                return None\n            # remaining should be [day_or_year, year_or_day] or more\n            # We expect exactly two numeric tokens\n            nums = []\n            for r in remaining[:2]:\n                try:\n                    nums.append(int(r))\n                except ValueError:\n                    return None\n            if len(nums) < 2:\n                return None\n            a, b = nums[0], nums[1]\n            # Determine year and day:\n            # If one is clearly a 4-digit year, the other is the day\n            if a > 31:\n                year, day = a, b\n            elif b > 31:\n                year, day = b, a\n            else:\n                # Two-digit year: treat larger as year if both \u2264 31 is ambiguous\n                # Convention: if both could be day, assume the last token is year\n                # Position: if month came first, order is Month Day Year\n                if i == 0:\n                    # Month Day Year\n                    day, year = a, b\n                else:\n                    # Day Month Year  or  Year Month Day (unusual)\n                    # assume Day Month Year\n                    day, year = a, b\n            # Expand two-digit year (Python convention: 00-68 \u2192 2000-2068)\n            if 0 <= year <= 99:\n                year = year + 2000 if year <= 68 else year + 1900\n            return (year, month_num, day)\n    return None\n\n\n# Ordered list of unambiguous or conventionally-prioritised strptime formats\n_FORMATS = [\n    # ISO / numeric with 4-digit year first (unambiguous)\n    \"%Y-%m-%d\",           # 2024-03-15\n    \"%Y/%m/%d\",           # 2024/03/15\n    \"%Y.%m.%d\",           # 2024.03.15\n    # US convention: MM/DD/YYYY (slash) and MM-DD-YYYY (dash)\n    \"%m/%d/%Y\",           # 03/15/2024\n    \"%m-%d-%Y\",           # 03-15-2024\n    \"%m.%d.%Y\",           # 03.15.2024\n    # Two-digit year variants\n    \"%Y-%m-%d\",           # already listed, harmless\n    \"%m/%d/%y\",           # 03/15/24\n    \"%m-%d-%y\",           # 03-15-24\n    \"%m.%d.%y\",           # 03.15.24\n    \"%y-%m-%d\",           # 24-03-15\n    \"%y/%m/%d\",           # 24/03/15\n    # With time components (ignore time, keep date) \u2014 strip timezone first\n    \"%Y-%m-%dT%H:%M:%S\",\n    \"%Y-%m-%d %H:%M:%S\",\n    \"%Y-%m-%dT%H:%M:%S.%f\",\n    \"%Y-%m-%dT%H:%M\",\n    \"%Y-%m-%d %H:%M\",\n]\n\n\ndef _strip_timezone(s: str) -> str:\n    \"\"\"Remove trailing timezone info like Z, +05:30, -07:00 from ISO strings.\"\"\"\n    # Match trailing Z or \u00b1HH:MM or \u00b1HHMM\n    return re.sub(r'([Zz]|[+\\-]\\d{2}:?\\d{2})$', '', s).rstrip()\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s).__name__!r}\")\n\n    s_stripped = s.strip()\n    if not s_stripped:\n        raise ValueError(\"Empty date string\")\n\n    # First try written-month parser (locale-independent, handles English names)\n    # Check if there's any alphabetic content suggesting a month name\n    if re.search(r'[A-Za-z]', s_stripped):\n        result = _try_written_month(s_stripped)\n        if result is not None:\n            year, month, day = result\n            # Validate ranges\n            try:\n                datetime(year, month, day)\n                return (year, month, day)\n            except ValueError:\n                pass\n        # If written month parse failed, fall through to strptime (might handle\n        # day-of-week prefixes etc.) but with locale-forced approach\n        # Try strptime with written month formats using locale workaround\n        # Use the C locale temporarily if possible\n        import locale\n        old_locale = locale.getlocale(locale.LC_TIME)\n        try:\n            locale.setlocale(locale.LC_TIME, 'C')\n        except locale.Error:\n            pass\n        written_fmts = [\n            \"%B %d, %Y\", \"%B %d %Y\",\n            \"%b %d, %Y\", \"%b %d %Y\",\n            \"%d %B %Y\", \"%d %b %Y\",\n            \"%d-%B-%Y\", \"%d-%b-%Y\",\n            \"%B %d, %y\", \"%B %d %y\",\n            \"%b %d, %y\", \"%b %d %y\",\n            \"%d %B %y\", \"%d %b %y\",\n        ]\n        for fmt in written_fmts:\n            try:\n                dt = datetime.strptime(s_stripped, fmt)\n                try:\n                    locale.setlocale(locale.LC_TIME, old_locale)\n                except locale.Error:\n                    pass\n                return (dt.year, dt.month, dt.day)\n            except ValueError:\n                continue\n        try:\n            locale.setlocale(locale.LC_TIME, old_locale)\n        except locale.Error:\n            pass\n\n    # Numeric / ISO formats\n    # Strip timezone for ISO datetime strings\n    s_for_parse = _strip_timezone(s_stripped)\n\n    for fmt in _FORMATS:\n        try:\n            dt = datetime.strptime(s_for_parse, fmt)\n            return (dt.year, dt.month, dt.day)\n        except ValueError:\n            continue\n\n    raise ValueError(f\"Unable to parse date string: {s!r}\")\n",
+      "reasoning": "I'm addressing the reviewer feedback:\n\n1. **Locale issue**: Added a hardcoded English month name dictionary (`_try_written_month`) for locale-independent month name parsing. Also added a fallback that temporarily sets LC_TIME to 'C' before using strptime with month-name formats.\n\n2. **Ambiguous numeric formats**: Removed `%d-%m-%Y` (DD-MM-YYYY) entirely. For dash-separated dates, I use `%Y-%m-%D` (ISO, unambiguous) first, then `%m-%d-%Y` (US MM-DD convention). For slash-separated, `%m/%d/%Y`. This avoids the silent mis-parse of dates like \"01-03-2024\".\n\n3. **Duplicate entry**: Removed the duplicate `\"%B %d, %Y\"` from the main list.\n\n4. **Timezone handling**: Added `_strip_timezone()` to strip Z or \u00b1HH:MM suffixes before strptime parsing of ISO datetime strings.\n\n5. **Two-digit years**: Added formats with `%y` for two-digit year support.\n\n6. **Written month parser**: The `_try_written_month` function handles English month names directly without relying on locale, covering formats like \"March 15, 2024\", \"15 March 2024\", \"15-March-2024\", etc.",
+      "test_signal": "10 / 11 tests passing",
+      "reviewer_feedback": [
+        {
+          "line_range": [
+            88,
+            102
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The two-digit-year disambiguation logic when both `a` and `b` are \u2264 31 always assigns `day, year = a, b` regardless of whether the month came first (i == 0) or not (the else branch does the same assignment). The comment says 'Month Day Year' for i==0 and 'Day Month Year' for else, but both branches do `day, year = a, b`. This means for a written-month format like '15 Mar 24', the logic would set day=15 and year=24, which is correct by coincidence. However, the branching is dead code/misleading and could hide real bugs if the two branches were ever different.",
+          "rationale": "Lines 95-102 show both the `if i == 0` and `else` branches executing `day, year = a, b`. The comment suggests different intended behavior but the code is identical. This is either a latent bug or dead code that obscures intent.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            113,
+            140
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "When the written-month regex path is taken but `_try_written_month` returns None, the code falls through to strptime with written month formats. However, after the locale-based strptime loop, code does NOT raise a ValueError \u2014 it falls through to the numeric/ISO section. This means a string containing alphabetic characters (but not a valid month name, e.g. 'foo 15, 2024') will silently fall through to the numeric parser which will also fail and eventually raise ValueError. This is probably fine but the locale manipulation could itself cause issues: `locale.setlocale` is not thread-safe and may alter global state if an exception occurs mid-loop without the finally-style cleanup.",
+          "rationale": "The locale restore is attempted after the loop but only inside a try/except. If an unexpected exception (not ValueError) is raised during `datetime.strptime`, the locale might not be restored. A `try/finally` would be safer.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            148,
+            162
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `_FORMATS` list tries `%m-%d-%Y` (US convention MM-DD-YYYY) before any DD-MM-YYYY format. For a string like '01-03-2024', this will always be parsed as January 3rd, not March 1st. This may or may not match what the tests expect, but it is an ambiguous format that the spec does not address. The prior reviewer already flagged ambiguous numeric ordering \u2014 the writer chose US convention (MM-DD) which may or may not be what the test suite expects.",
+          "proposed_interpretation": "The spec is silent on DD/MM vs MM/DD for purely numeric dates. If tests use DD/MM/YYYY style inputs, this will fail silently by returning the wrong date without raising ValueError.",
+          "rationale": "This was flagged in prior feedback as a spec ambiguity. The writer committed to US convention (MM-DD), which is a reasonable choice but carries risk. No change from the prior attempt in this regard.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            145,
+            162
+          ],
+          "category": "style",
+          "severity": "low",
+          "finding_type": "spec-interpretation",
+          "description": "`_FORMATS` contains a duplicate `\"%Y-%m-%d\"` entry (first at line ~148 and again labeled 'already listed, harmless' around line ~156). This is harmless but adds unnecessary iterations.",
+          "rationale": "Minor style issue \u2014 the duplicate format is tried twice, wasting a small amount of time but causing no correctness problem.",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            113,
+            140
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The written-month strptime fallback (lines 113-140) uses `locale.setlocale(locale.LC_TIME, 'C')` hoping to get English month names. However, if the locale is already non-C and `setlocale` to 'C' fails (caught silently), the `%B`/`%b` strptime formats will still use the system locale and may fail for English month names. More importantly, if `setlocale` to 'C' succeeds but parsing also succeeds via `_try_written_month` first (line 113 block), this fallback is never reached \u2014 so for the two spec examples it's fine. But if `_try_written_month` returns None for a valid English month string, this branch is needed and locale correctness matters.",
+          "proposed_interpretation": "The `_try_written_month` custom parser should handle all English month name formats reliably without needing the locale-dependent strptime fallback. The fallback adds complexity and thread-safety risk without clear benefit.",
+          "rationale": "The locale manipulation is a fragile pattern. If tests run in parallel or in a non-C locale environment, `setlocale` may behave unexpectedly or be ignored. The custom `_try_written_month` already handles the main spec example; the strptime fallback is redundant and risky.",
+          "spec_quote_found_in_spec": null
+        }
+      ],
+      "arbiter_feedback": [
+        {
+          "line_range": [
+            62,
+            75
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The written-month parser normalizes separators (including hyphens) to spaces before tokenizing, but then uses token position `i` to determine date order. This means that after normalization, a string like '2024-March-15' becomes tokens ['2024', 'March', '15'], month is at i=1, `remaining = ['2024', '15']`, a=2024, b=15. Since a>31, year=2024, day=15. That's correct. However, for 'March-15-2024', normalization gives tokens ['March', '15', '2024'], i=0, remaining=['15','2024'], a=15, b=2024, b>31 so year=2024, day=15. Also correct. The real problem is for a string like '15-March-2024': normalized to ['15', 'March', '2024'], i=1, remaining=['15','2024'], a=15, b=2024, b>31 so year=2024, day=15. Correct. But consider '2024-March-15' vs. the spec example 'March 15, 2024': these all work. The deeper bug is: the `_try_written_month` function only looks at `remaining[:2]` (line 74), so if there are MORE than 3 tokens (e.g., extra whitespace tokens or a string like 'Wednesday, March 15, 2024'), the extra tokens are silently ignored and parsing may succeed with wrong data or miss a validation error. More critically, `remaining` after extracting the month token could have more than 2 elements (line 73 collects ALL non-month tokens), but only the first two are used \u2014 any trailing tokens are silently ignored.",
+          "rationale": "A string like '15 March 2024 extra' would be parsed as (2024, 3, 15) without error, when it arguably should raise ValueError since it doesn't match a known date format. This is silent incorrect acceptance of malformed input.",
+          "spec_quote": "Raise ValueError for input that cannot be parsed as a date.",
+          "spec_quote_found_in_spec": false,
+          "downgraded_reason": "spec-violation with spec_quote not found in spec"
+        },
+        {
+          "line_range": [
+            56,
+            58
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-violation",
+          "description": "In `_try_written_month`, the early return `if len(tokens) < 3` guards against too few tokens, but there is no guard for the case where `remaining` after extracting the month token has fewer than 2 numeric items because the remaining tokens are not integers (e.g., 'March foo bar'). The code does check `len(nums) < 2` on line 79, but `remaining` is built from ALL non-month tokens (line 70), and `remaining[:2]` slices the first two. If those two tokens are non-numeric, `int(r)` raises ValueError caught at line 77, `nums` stays short of 2, and None is returned \u2014 that's fine. However, if the string has alphabetic non-month tokens mixed in (e.g., 'March 15th 2024'), the 'th' suffix in '15th' causes `int('15th')` to fail and the whole parse returns None, causing the function to fall through to strptime which also won't match, ultimately raising ValueError \u2014 correct behavior, but '15th' is a reasonably human-readable date format the spec implies should work ('The function should be robust to common formats users might type').",
+          "rationale": "The spec states the function should be 'robust to common formats users might type'. Ordinal suffixes like '15th', '1st', '2nd', '3rd' are extremely common in human-written dates. None of the format strings in `_FORMATS` or the written-month parser handle these.",
+          "spec_quote": "The function should be robust to common formats users might type.",
+          "spec_quote_found_in_spec": true
+        },
+        {
+          "line_range": [
+            103,
+            108
+          ],
+          "category": "correctness",
+          "severity": "high",
+          "finding_type": "spec-interpretation",
+          "description": "The two-digit year expansion at lines 103-105 uses `year + 2000 if year <= 68 else year + 1900`. However, when `_try_written_month` produces a 4-digit year (e.g., 2024), this branch is never reached because the `if 0 <= year <= 99` guard correctly skips it. But when both `a` and `b` are small numbers \u226431 and the 4-digit-year detection fails, the code assigns `year = b` (e.g., b=24 for the year). Then the expansion fires. However, the `if 0 <= year <= 99` check would also match year=0 or any ambiguous small day-like number. More critically: if a user passes a date like 'March 5, 7' (year=7, day=5), b=7, neither a>31 nor b>31, so the code falls into the ambiguous branch and assigns year=7, day=5. Then `0 <= 7 <= 99` \u2192 year becomes 2007. There is no way to specify an early-century year like 7 AD, but that's not a practical issue. The real bug: `if 0 <= year <= 99` always holds (negative years are impossible from `int()` of normal tokens), so this is effectively always applied when a 4-digit year was not detected. This means year=31 (from a date like 'March 5 31') would be expanded to 1931 or 2031 \u2014 which may be wrong if '31' was intended as a day and '5' as the year, but the `if i==0` logic would correctly assign day=5, year=31 \u2192 expanded to 1931. This is arguably correct behavior but is a silent assumption.",
+          "rationale": "Not a crash-level bug, but the interaction of the ambiguous two-digit-year logic with the positional assumption silently misparses edge cases like 'March 31 5' (parsed as day=31, year=5 \u2192 2005 instead of raising ValueError for an ambiguous/weird date).",
+          "downgraded_reason": "unknown finding_type 'correctness'",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            163,
+            176
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The `_strip_timezone` regex at line 173 uses `[+\\-]` in a character class. In Python regex, `\\-` at a non-edge position in a character class could be interpreted as a range operator. While Python's `re` module typically handles this gracefully, the correct idiomatic form is `[+-]` (hyphen at start or end) or `[+\\-]`. More critically, the regex `([Zz]|[+\\-]\\d{2}:?\\d{2})$` will also strip a trailing `+0000` timezone from strings that happen to end with such patterns even if they are not ISO datetime strings (e.g., a pure date string '2024-03-15' would not match this, so it's fine in practice). However, the regex could incorrectly strip content from a date string like '2024-03-1' followed by something matching the tz pattern \u2014 unlikely but the regex is applied to all numeric strings.",
+          "rationale": "Minor robustness concern. The `_strip_timezone` function is called on all numeric/ISO inputs unconditionally, including pure date strings. While in practice pure date strings won't match the timezone pattern, the function is slightly over-applied.",
+          "downgraded_reason": "unknown finding_type 'correctness'",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            113,
+            117
+          ],
+          "category": "correctness",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "When a string contains alphabetic content (triggering the `if re.search(r'[A-Za-z]', s_stripped)` branch) but is not a valid date (e.g., 'foobar'), `_try_written_month` returns None, the strptime written-format loop fails, and then the code falls through to the numeric/ISO section (lines 165+). The numeric section calls `_strip_timezone(s_stripped)` and then tries all `_FORMATS`. Since 'foobar' contains no letters in the right places for `%Y-%m-%d` etc., all formats fail and `ValueError` is correctly raised. However, for a string like 'T12:30', which contains a letter 'T', the code enters the alphabetic branch, `_try_written_month` returns None, strptime written formats fail, and then falls through to numeric formats. `_strip_timezone` won't match, and `%Y-%m-%dT%H:%M` won't match 'T12:30'. So `ValueError` is raised \u2014 correct. The actual concern is that the alphabetic-content check is a heuristic that works but is not robust: e.g., 'jan' alone (3-char month name, tokens < 3) returns None from `_try_written_month` but then falls through to strptime formats like `%b %d, %Y` which also won't match 'jan' alone, correctly raising ValueError.",
+          "rationale": "The control flow for alphabetic strings that fail all parsers correctly raises ValueError, but the path through locale manipulation adds unnecessary overhead and state risk (already partially noted by first reviewer for thread safety, but the fallthrough logic itself is also subtly confusing).",
+          "downgraded_reason": "unknown finding_type 'correctness'",
+          "spec_quote_found_in_spec": null
+        },
+        {
+          "line_range": [
+            148,
+            162
+          ],
+          "category": "regression",
+          "severity": "medium",
+          "finding_type": "spec-interpretation",
+          "description": "The format `\"%m-%d-%Y\"` in `_FORMATS` will match a string like '03-15-2024'. However, `_strip_timezone` is applied first. The regex `([Zz]|[+\\-]\\d{2}:?\\d{2})$` checks for a trailing timezone. For '03-15-2024', the suffix '-2024' ends with digits but the full pattern requires `[+\\-]\\d{2}:?\\d{2}` \u2014 that's exactly 4 digits (with optional colon). '-2024' is `[\\-]\\d{4}` which matches `[+\\-]\\d{2}:?\\d{2}` as `-20` + optional colon (absent) + `24`. So `_strip_timezone('03-15-2024')` would strip '-2024' leaving '03-15', which then fails all formats. This is a critical correctness bug: dash-separated dates with a 4-digit year will be silently mangled by the timezone stripper.",
+          "rationale": "The regex `[+\\-]\\d{2}:?\\d{2}` matches the pattern `-XXYY` where XX and YY are two-digit groups. The year portion of '03-15-2024' ends with '-2024', which is '-20' + '24' \u2014 exactly matching `[+\\-]\\d{2}:?\\d{2}` (with no colon). So `_strip_timezone('03-15-2024')` returns '03-15', breaking all dash-separated date parsing.",
+          "downgraded_reason": "unknown finding_type 'correctness'",
+          "spec_quote_found_in_spec": null
+        }
+      ]
+    },
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets common human-readable date formats and returns (year, month, day).\nRaises ValueError for input that cannot be parsed.\n\nDesign decisions:\n- Month names are matched with a hardcoded English dict to avoid locale issues.\n- The _strip_timezone function is only applied to strings that look like\n  ISO datetime strings (contain 'T' or have a time component), not to all\n  dash-separated date strings, to avoid mangling '03-15-2024'.\n- Ambiguous numeric-only formats: ISO (YYYY-MM-DD) first, then MM/DD/YYYY\n  (US convention) for slash, MM-DD-YYYY for dash. DD-MM-YYYY is not tried\n  to avoid silent mis-parses.\n- Ordinal suffixes (st, nd, rd, th) are stripped before parsing.\n- Two-digit years supported via Python's %y (pivot: 00-68 \u2192 2000-2068).\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n\n# Hardcoded English month names for locale-independent parsing\n_MONTHS_LONG = {\n    'january': 1, 'february': 2, 'march': 3, 'april': 4,\n    'may': 5, 'june': 6, 'july': 7, 'august': 8,\n    'september': 9, 'october': 10, 'november': 11, 'december': 12,\n}\n_MONTHS_SHORT = {\n    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,\n    'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,\n    'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,\n}\n_ALL_MONTHS = {**_MONTHS_LONG, **_MONTHS_SHORT}\n\n# Regex to strip ordinal suffixes like 1st, 2nd, 3rd, 4th\n_ORDINAL_RE = re.compile(r'(\\d+)(st|nd|rd|th)\\b', re.IGNORECASE)\n\n# Regex to detect ISO datetime strings with timezone (must have T separator\n# and time digits before the tz suffix)\n_TZ_STRIP_RE = re.compile(\n    r'^(\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?)'\n    r'([Zz]|[+\\-]\\d{2}:?\\d{2})$'\n)\n\n\ndef _strip_timezone(s: str) -> str:\n    \"\"\"\n    Remove trailing timezone info ONLY from ISO datetime strings\n    (strings that have a date+time pattern before the timezone).\n    Pure date strings like '03-15-2024' are returned unchanged.\n    \"\"\"\n    m = _TZ_STRIP_RE.match(s)\n    if m:\n        return m.group(1)\n    return s\n\n\ndef _try_written_month(s: str):\n    \"\"\"\n    Try to parse a string that contains a written month name (English).\n    Handles formats like:\n      'March 15, 2024', 'Mar 15, 2024', '15 March 2024', '15 Mar 2024',\n      'March 15 2024', '15-March-2024', '15-Mar-2024',\n      and two-digit year variants, and ordinal suffixes like '15th'.\n    Returns (year, month, day) or None.\n    Only succeeds if the string contains exactly 3 meaningful tokens\n    (month name + two numbers).\n    \"\"\"\n    # Strip ordinal suffixes\n    s = _ORDINAL_RE.sub(r'\\1', s)\n    # Normalise separators to spaces, remove commas\n    normalized = re.sub(r'[,\\-/.]', ' ', s).strip()\n    tokens = [t for t in normalized.split() if t]  # remove empty tokens\n\n    if len(tokens) < 3:\n        return None\n\n    # Find the month token\n    month_idx = None\n    month_num = None\n    for i, token in enumerate(tokens):\n        m = _ALL_MONTHS.get(token.lower())\n        if m is not None:\n            month_idx = i\n            month_num = m\n            break\n\n    if month_idx is None:\n        return None\n\n    # Remaining tokens (all non-month tokens)\n    remaining = [tokens[j] for j in range(len(tokens)) if j != month_idx]\n\n    # We need exactly 2 remaining tokens (day and year)\n    # If there are more, we cannot reliably parse \u2192 return None\n    if len(remaining) != 2:\n        return None\n\n    # Both remaining tokens must be integers\n    try:\n        a = int(remaining[0])\n        b = int(remaining[1])\n    except ValueError:\n        return None\n\n    # Determine year and day:\n    # If one is clearly a 4-digit year (> 31), the other is the day\n    if a > 31 and b <= 31:\n        year, day = a, b\n    elif b > 31 and a <= 31:\n        year, day = b, a\n    elif a > 31 and b > 31:\n        # Both look like years? Malformed.\n        return None\n    else:\n        # Both \u2264 31: ambiguous two-digit year situation\n        # Use position: if month comes first (i==0), order is Month Day Year\n        # Otherwise assume Day Month Year (most common with leading number)\n        if month_idx == 0:\n            # Month Day Year\n            day, year = a, b\n        else:\n            # Day Month Year\n            day, year = a, b\n\n    # Expand two-digit year (Python convention: 00-68 \u2192 2000-2068, 69-99 \u2192 1969-1999)\n    if 0 <= year <= 99:\n        year = year + 2000 if year <= 68 else year + 1900\n\n    return (year, month_num, day)\n\n\n# Ordered list of unambiguous or conventionally-prioritised strptime formats\n_FORMATS = [\n    # ISO / numeric with 4-digit year first (unambiguous)\n    \"%Y-%m-%d\",           # 2024-03-15\n    \"%Y/%m/%d\",           # 2024/03/15\n    \"%Y.%m.%d\",           # 2024.03.15\n    # US convention: MM/DD/YYYY (slash) and MM-DD-YYYY (dash)\n    \"%m/%d/%Y\",           # 03/15/2024\n    \"%m-%d-%Y\",           # 03-15-2024\n    \"%m.%d.%Y\",           # 03.15.2024\n    # Two-digit year variants\n    \"%m/%d/%y\",           # 03/15/24\n    \"%m-%d-%y\",           # 03-15-24\n    \"%m.%d.%y\",           # 03.15.24\n    \"%y-%m-%d\",           # 24-03-15\n    \"%y/%m/%d\",           # 24/03/15\n    # With time components (timezone stripped separately for ISO datetimes)\n    \"%Y-%m-%dT%H:%M:%S\",\n    \"%Y-%m-%d %H:%M:%S\",\n    \"%Y-%m-%dT%H:%M:%S.%f\",\n    \"%Y-%m-%dT%H:%M\",\n    \"%Y-%m-%d %H:%M\",\n]\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s).__name__!r}\")\n\n    s_stripped = s.strip()\n    if not s_stripped:\n        raise ValueError(\"Empty date string\")\n\n    # First try written-month parser (locale-independent, handles English names)\n    # Check if there's any alphabetic content suggesting a month name\n    if re.search(r'[A-Za-z]', s_stripped):\n        result = _try_written_month(s_stripped)\n        if result is not None:\n            year, month, day = result\n            # Validate ranges using datetime constructor\n            try:\n                datetime(year, month, day)\n                return (year, month, day)\n            except ValueError:\n                pass\n        # Fall through: raise ValueError (no numeric formats apply to alpha strings)\n        raise ValueError(f\"Unable to parse date string: {s!r}\")\n\n    # Numeric / ISO formats only reach here\n    # Strip timezone only from ISO datetime strings (not plain date strings)\n    s_for_parse = _strip_timezone(s_stripped)\n\n    for fmt in _FORMATS:\n        try:\n            dt = datetime.strptime(s_for_parse, fmt)\n            return (dt.year, dt.month, dt.day)\n        except ValueError:\n            continue\n\n    raise ValueError(f\"Unable to parse date string: {s!r}\")\n",
+      "reasoning": "Key changes from attempt 2:\n\n1. **Fixed the critical timezone-stripping bug**: The old `_strip_timezone` used a simple regex that matched `-2024` as a timezone offset, mangling '03-15-2024' to '03-15'. Now `_strip_timezone` only strips timezones from strings that match a full ISO datetime pattern (date + time before the tz suffix).\n\n2. **Removed locale manipulation**: Replaced the fragile `locale.setlocale` fallback with a clean approach: if the string contains alphabetic characters but `_try_written_month` can't parse it, we raise ValueError immediately (no fallthrough to numeric formats, which wouldn't work anyway for alpha strings).\n\n3. **Fixed `remaining != 2` check**: Now requires exactly 2 remaining tokens after extracting the month name, so 'March 15, 2024 extra' will return None and raise ValueError instead of silently parsing.\n\n4. **Ordinal suffix stripping**: Added `_ORDINAL_RE` to strip '1st', '2nd', '3rd', '15th' etc. before parsing.\n\n5. **Removed duplicate `%Y-%m-%d`** from `_FORMATS`.\n\n6. **Kept US convention** (MM-DD) for ambiguous numeric formats since that's what passed before and the spec doesn't specify.\n\n7. **The two-digit year ambiguous branch**: Both `if month_idx == 0` and `else` still do `day, year = a, b` \u2014 this is actually the same behavior either way when both \u2264 31 (the remaining tokens are [first_num, second_num] and we always take second as year), which is the safest heuristic. Kept this explicit for clarity.",
+      "test_signal": "10 / 11 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 10,
+      "failed": 1,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_us_slashes_interpreted_as_mm_dd_yyyy",
+          "outcome": "failed",
+          "longrepr": "tests.py:37: in test_us_slashes_interpreted_as_mm_dd_yyyy\n    assert parse_date(\"03/04/2024\") == (2024, 3, 4)\nE   assert (2024, 4, 3) == (2024, 3, 4)\nE     \nE     At index 1 diff: 4 != 3\nE     Use -v to get more diff"
+        }
+      ]
+    },
+    {
+      "passed": 10,
+      "failed": 1,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    },
+    {
+      "passed": 10,
+      "failed": 1,
+      "errors": 0,
+      "total": 11,
+      "all_passed": false,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": [
+        {
+          "nodeid": "tests.py::test_two_digit_year_rejected",
+          "outcome": "failed",
+          "longrepr": "tests.py:50: in test_two_digit_year_rejected\n    with pytest.raises(ValueError):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>"
+        }
+      ]
+    }
+  ]
+}

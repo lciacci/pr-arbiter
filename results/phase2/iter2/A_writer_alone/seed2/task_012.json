@@ -1,0 +1,31 @@
+{
+  "task_id": "task_012",
+  "mode": "writer-alone",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 11,
+  "final_total": 11,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets various human-readable date formats and returns (year, month, day).\nRaises ValueError for unrecognisable input.\n\nSupported formats (non-exhaustive):\n  ISO / numeric separators  : 2024-03-15, 2024/03/15, 2024.03.15\n  US-style with separators  : 03/15/2024, 03-15-2024\n  Written month, long       : March 15, 2024 / 15 March 2024\n  Written month, short      : Mar 15, 2024  / 15 Mar 2024\n  Compact numeric           : 20240315\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n# ------------------------------------------------------------------ constants\n\n_MONTH_NAMES = {\n    \"january\": 1,  \"jan\": 1,\n    \"february\": 2, \"feb\": 2,\n    \"march\": 3,    \"mar\": 3,\n    \"april\": 4,    \"apr\": 4,\n    \"may\": 5,\n    \"june\": 6,     \"jun\": 6,\n    \"july\": 7,     \"jul\": 7,\n    \"august\": 8,   \"aug\": 8,\n    \"september\": 9,\"sep\": 9, \"sept\": 9,\n    \"october\": 10, \"oct\": 10,\n    \"november\": 11,\"nov\": 11,\n    \"december\": 12,\"dec\": 12,\n}\n\n# strptime format strings to try in order\n_STRPTIME_FORMATS = [\n    \"%Y-%m-%d\",      # 2024-03-15\n    \"%Y/%m/%d\",      # 2024/03/15\n    \"%Y.%m.%d\",      # 2024.03.15\n    \"%m/%d/%Y\",      # 03/15/2024\n    \"%m-%d-%Y\",      # 03-15-2024\n    \"%m.%d.%Y\",      # 03.15.2024\n    \"%d/%m/%Y\",      # 15/03/2024  (ambiguous; tried after US style)\n    \"%B %d, %Y\",     # March 15, 2024\n    \"%b %d, %Y\",     # Mar 15, 2024\n    \"%B %d %Y\",      # March 15 2024\n    \"%b %d %Y\",      # Mar 15 2024\n    \"%d %B %Y\",      # 15 March 2024\n    \"%d %b %Y\",      # 15 Mar 2024\n    \"%d %B, %Y\",     # 15 March, 2024\n    \"%d %b, %Y\",     # 15 Mar, 2024\n    \"%Y %m %d\",      # 2024 03 15\n    \"%d-%b-%Y\",      # 15-Mar-2024\n    \"%d-%B-%Y\",      # 15-March-2024\n]\n\n\ndef _validate(year: int, month: int, day: int) -> tuple[int, int, int]:\n    \"\"\"Light validation; datetime already checks ranges during parsing.\"\"\"\n    if not (1 <= month <= 12):\n        raise ValueError(f\"Month {month} out of range\")\n    if not (1 <= day <= 31):\n        raise ValueError(f\"Day {day} out of range\")\n    return (year, month, day)\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s)}\")\n\n    s = s.strip()\n    if not s:\n        raise ValueError(\"Empty date string\")\n\n    # ---- 1. Try all strptime formats --------------------------------\n    for fmt in _STRPTIME_FORMATS:\n        try:\n            dt = datetime.strptime(s, fmt)\n            return _validate(dt.year, dt.month, dt.day)\n        except ValueError:\n            pass\n\n    # ---- 2. Compact numeric YYYYMMDD  (e.g. \"20240315\") -------------\n    if re.fullmatch(r\"\\d{8}\", s):\n        year, month, day = int(s[:4]), int(s[4:6]), int(s[6:])\n        try:\n            datetime(year, month, day)\n            return _validate(year, month, day)\n        except ValueError:\n            pass\n\n    # ---- 3. Try to parse with written month name anywhere -----------\n    # Pattern: optional day, month-name, optional day/year in any order\n    # Normalise to lowercase for matching\n    lower = s.lower()\n    # Replace punctuation (except hyphens between word chars) with spaces\n    cleaned = re.sub(r\"[,./]\", \" \", lower)\n    tokens = cleaned.split()\n\n    month_val = None\n    remaining = []\n    for tok in tokens:\n        # strip trailing 'st','nd','rd','th' from ordinals\n        tok_stripped = re.sub(r\"(st|nd|rd|th)$\", \"\", tok)\n        if tok_stripped in _MONTH_NAMES:\n            month_val = _MONTH_NAMES[tok_stripped]\n        elif tok in _MONTH_NAMES:\n            month_val = _MONTH_NAMES[tok]\n        else:\n            remaining.append(tok_stripped if tok_stripped.isdigit() else tok)\n\n    if month_val is not None:\n        numbers = []\n        for tok in remaining:\n            if tok.isdigit():\n                numbers.append(int(tok))\n        if len(numbers) == 2:\n            # Distinguish year from day: year >= 1000 (or > 31)\n            a, b = numbers\n            if a > 31:          # a is year\n                year, day = a, b\n            elif b > 31:        # b is year\n                year, day = b, a\n            else:\n                # both small \u2014 assume first is day, second is 2-digit year\n                day = a\n                year = 2000 + b if b < 100 else b\n            try:\n                datetime(year, month_val, day)\n                return _validate(year, month_val, day)\n            except ValueError:\n                pass\n\n    raise ValueError(f\"Unable to parse date string: {s!r}\")\n",
+      "reasoning": "I interpreted the spec as requiring a robust date parser that handles multiple common human-readable formats. I used datetime.strptime with a list of format strings as the primary strategy, then added a compact YYYYMMDD fallback and a token-based fallback for written month names in unusual orders. The two explicit examples (ISO format and \"Month DD, YYYY\") are covered by strptime formats. I raise ValueError for anything unrecognisable, as required.",
+      "test_signal": "11 / 11 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "total": 11,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

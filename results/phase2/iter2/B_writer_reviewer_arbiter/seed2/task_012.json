@@ -1,0 +1,31 @@
+{
+  "task_id": "task_012",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 11,
+  "final_total": 11,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 012 \u2014 Parse a date string\n\nInterprets common human-readable date formats and returns (year, month, day).\nRaises ValueError for input that cannot be parsed.\n\"\"\"\n\nimport re\nfrom datetime import datetime\n\n\n# Supported format strings to try in order\n_FORMATS = [\n    # ISO / numeric variants\n    \"%Y-%m-%d\",\n    \"%Y/%m/%d\",\n    \"%Y.%m.%d\",\n    # US-style numeric\n    \"%m/%d/%Y\",\n    \"%m-%d-%Y\",\n    \"%m.%d.%Y\",\n    # Day-month-year numeric\n    \"%d/%m/%Y\",\n    \"%d-%m-%Y\",\n    \"%d.%m.%Y\",\n    # Long month name\n    \"%B %d, %Y\",\n    \"%B %d %Y\",\n    \"%d %B %Y\",\n    \"%d %B, %Y\",\n    # Abbreviated month name\n    \"%b %d, %Y\",\n    \"%b %d %Y\",\n    \"%d %b %Y\",\n    \"%d %b, %Y\",\n    # With time (ignored \u2014 we only return date portion)\n    \"%Y-%m-%dT%H:%M:%S\",\n    \"%Y-%m-%d %H:%M:%S\",\n]\n\n\ndef parse_date(s: str) -> tuple[int, int, int]:\n    \"\"\"Parse a date string and return (year, month, day).\n\n    Supports many common formats including:\n      - ISO 8601:           \"2024-03-15\"\n      - Long month name:    \"March 15, 2024\"\n      - Short month name:   \"Mar 15, 2024\"\n      - US numeric:         \"03/15/2024\"\n      - European numeric:   \"15/03/2024\"  (ambiguous \u2014 tried after US style)\n\n    Raises ValueError if the string cannot be parsed as a date.\n    \"\"\"\n    if not isinstance(s, str):\n        raise ValueError(f\"Expected a string, got {type(s).__name__!r}\")\n\n    s = s.strip()\n    if not s:\n        raise ValueError(\"Empty date string\")\n\n    for fmt in _FORMATS:\n        try:\n            dt = datetime.strptime(s, fmt)\n            return (dt.year, dt.month, dt.day)\n        except ValueError:\n            continue\n\n    raise ValueError(f\"Cannot parse date string: {s!r}\")\n",
+      "reasoning": "The spec asks for a function that parses common human-readable date strings into (year, month, day) tuples, raising ValueError for unparseable input. I tried a list of common strptime format strings in a sensible order (ISO first, then named-month formats, then numeric variants). The two concrete examples in the spec (\"2024-03-15\" \u2192 (2024,3,15) and \"March 15, 2024\" \u2192 (2024,3,15)) are both covered. For ambiguous numeric formats like MM/DD/YYYY vs DD/MM/YYYY, I default to US style first since the spec doesn't disambiguate. I also handle edge cases: non-string input, empty string, and strings with datetime portions (stripping the time).",
+      "test_signal": "11 / 11 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "total": 11,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}
