@@ -47,6 +47,7 @@ def serialize_run(run: TaskRun) -> dict:
                 "test_signal": att.test_signal,
                 "reviewer_feedback": att.reviewer_feedback,
                 "arbiter_feedback": att.arbiter_feedback,
+                "pass_ranking_shown": att.pass_ranking_shown,
             }
         )
     tr_out = []
@@ -130,10 +131,16 @@ def summarize(runs: list[TaskRun], manifest: dict) -> dict:
     }
 
 
-# Arm mapping for Phase 2 iter2. Each arm picks reviewer/arbiter modules and
-# an optional writer extra_system. The mode string passed into TaskRun is
-# kept compatible with iter1 ("writer-alone" or "writer+reviewer+arbiter")
-# so the writer_loop driver doesn't need an arm concept.
+# Arm mapping. iter1 arms: A, B. iter2 arm: C (typed schema + iter2 writer
+# prompt). iter3 arms (2×2 factorial on top of typed schema): D, E, F.
+#
+#                 no prior-attempt prompt   + prior-attempt prompt
+# no iter2 writer prompt   D                          F
+# iter2 writer prompt      C (reuse iter2)            E
+#
+# All arm-C/D/E/F use the typed reviewer+arbiter (validator-checked
+# spec_quote). The mode string passed into TaskRun stays compatible with
+# iter1 so writer_loop doesn't need an arm concept.
 def _arm_config(arm: str) -> dict:
     if arm == "A" or arm == "writer-alone":
         return {
@@ -141,6 +148,7 @@ def _arm_config(arm: str) -> dict:
             "reviewer_fn": None,
             "arbiter_fn": None,
             "writer_extra_system": "",
+            "include_pass_ranking": False,
             "label": "A_writer_alone",
         }
     if arm == "B" or arm == "writer+reviewer+arbiter":
@@ -151,6 +159,7 @@ def _arm_config(arm: str) -> dict:
             "reviewer_fn": review,
             "arbiter_fn": arbitrate,
             "writer_extra_system": "",
+            "include_pass_ranking": False,
             "label": "B_writer_reviewer_arbiter",
         }
     if arm == "C" or arm == "writer+reviewer+arbiter+typed":
@@ -162,7 +171,45 @@ def _arm_config(arm: str) -> dict:
             "reviewer_fn": review,
             "arbiter_fn": arbitrate,
             "writer_extra_system": ARM_C_TYPED_FINDINGS_GUIDANCE,
+            "include_pass_ranking": False,
             "label": "C_writer_reviewer_arbiter_typed",
+        }
+    if arm == "D":
+        # H1 control: typed schema only. No iter2 writer prompt, no ranking.
+        from agents.writer_arbiter_typed import arbitrate
+        from agents.writer_reviewer_typed import review
+        return {
+            "mode": "writer+reviewer+arbiter",
+            "reviewer_fn": review,
+            "arbiter_fn": arbitrate,
+            "writer_extra_system": "",
+            "include_pass_ranking": False,
+            "label": "D_typed_no_writer_prompt",
+        }
+    if arm == "E":
+        # H1+H2 combined: typed schema + iter2 writer prompt + ranking.
+        from agents.writer import ARM_C_TYPED_FINDINGS_GUIDANCE
+        from agents.writer_arbiter_typed import arbitrate
+        from agents.writer_reviewer_typed import review
+        return {
+            "mode": "writer+reviewer+arbiter",
+            "reviewer_fn": review,
+            "arbiter_fn": arbitrate,
+            "writer_extra_system": ARM_C_TYPED_FINDINGS_GUIDANCE,
+            "include_pass_ranking": True,
+            "label": "E_typed_iter2prompt_plus_ranking",
+        }
+    if arm == "F":
+        # H2 isolated: typed schema + ranking, no iter2 writer prompt.
+        from agents.writer_arbiter_typed import arbitrate
+        from agents.writer_reviewer_typed import review
+        return {
+            "mode": "writer+reviewer+arbiter",
+            "reviewer_fn": review,
+            "arbiter_fn": arbitrate,
+            "writer_extra_system": "",
+            "include_pass_ranking": True,
+            "label": "F_typed_ranking_only",
         }
     raise ValueError(f"unknown arm: {arm!r}")
 
@@ -192,6 +239,7 @@ def main(
     reviewer_fn = cfg["reviewer_fn"]
     arbiter_fn = cfg["arbiter_fn"]
     writer_extra_system = cfg["writer_extra_system"]
+    include_pass_ranking = cfg.get("include_pass_ranking", False)
     arm_label = cfg["label"]
 
     manifest = load_manifest()
@@ -199,7 +247,10 @@ def main(
     if task_filter:
         tasks = [t for t in tasks if t in task_filter]
 
-    out_root = out_root or (RESULTS_DIR / "iter2")
+    # Default output root advances with the active iter. iter3 arms (D/E/F)
+    # land in results/phase2/iter3/. iter2 arms (A/B/C) writing fresh data
+    # land in iter2 as before — pass --iter to override.
+    out_root = out_root or (RESULTS_DIR / "iter3")
     out_dir = out_root / arm_label / f"seed{seed}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -216,6 +267,7 @@ def main(
                 reviewer_fn=reviewer_fn,
                 arbiter_fn=arbiter_fn,
                 writer_extra_system=writer_extra_system,
+                include_pass_ranking=include_pass_ranking,
             )
         except Exception as e:
             print(f"    EXCEPTION: {type(e).__name__}: {e}", flush=True)

@@ -17,7 +17,7 @@ from pathlib import Path
 # Make agents/ importable when running this file directly.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agents.writer import Attempt, write
+from agents.writer import Attempt, render_pass_ranking, write
 from eval.sandbox import TestResult, run_tests
 
 CORPUS_DIR = Path(__file__).parent.parent / "phase2_corpus"
@@ -47,6 +47,7 @@ def run_task(
     reviewer_fn=None,
     arbiter_fn=None,
     writer_extra_system: str = "",
+    include_pass_ranking: bool = False,
 ) -> TaskRun:
     """Run the writer loop on a single task.
 
@@ -60,14 +61,29 @@ def run_task(
         NO history — arbiter is the independent second pass. Optional.
     :param writer_extra_system: appended to the writer's system prompt.
         Arm C uses this to add finding-type handling guidance.
+    :param include_pass_ranking: arms E and F (iter3 H2). Renders a
+        prior-attempt pass-count ranking in the writer prompt at iter ≥ 2.
     """
     spec = (CORPUS_DIR / task_id / "spec.md").read_text()
     history: list[Attempt] = []
     results: list[TestResult] = []
 
     for it in range(1, budget + 1):
+        # Record the ranking block that *will be shown to* the next writer
+        # call so the per-task log preserves exactly what the writer saw.
+        ranking_for_this_call = (
+            render_pass_ranking(history)
+            if (include_pass_ranking and history)
+            else None
+        )
         try:
-            out = write(spec, history=history, task_id=task_id, extra_system=writer_extra_system)
+            out = write(
+                spec,
+                history=history,
+                task_id=task_id,
+                extra_system=writer_extra_system,
+                include_pass_ranking=include_pass_ranking,
+            )
         except Exception as e:
             return TaskRun(
                 task_id=task_id,
@@ -100,11 +116,14 @@ def run_task(
         signal = _format_signal(result)
 
         # Build attempt record. Feedback fields populated below if we're in
-        # multi-agent mode and we're going to iterate.
+        # multi-agent mode and we're going to iterate. pass_ranking_shown
+        # captures the ranking block that was shown to the writer *this*
+        # iteration (None if not applicable).
         attempt = Attempt(
             code=out.code,
             reasoning=out.reasoning,
             test_signal=signal,
+            pass_ranking_shown=ranking_for_this_call,
         )
 
         if result.all_passed:

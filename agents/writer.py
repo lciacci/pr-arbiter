@@ -13,6 +13,7 @@ string). No JSON parsing of free-form text.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from anthropic import Anthropic
@@ -74,6 +75,10 @@ class Attempt:
     test_signal: str  # e.g., "5/13 passing" or "collection error: ImportError"
     reviewer_feedback: list[dict] = field(default_factory=list)
     arbiter_feedback: list[dict] = field(default_factory=list)
+    # iter3 H2 logging: the ranked pass-count block shown to the writer at
+    # the iteration *following* this attempt. None if the ranking was not
+    # rendered (arms without include_pass_ranking, or no prior attempts).
+    pass_ranking_shown: str | None = None
 
 
 @dataclass
@@ -97,6 +102,7 @@ def write(
     history: list[Attempt] | None = None,
     task_id: str = "",
     extra_system: str = "",
+    include_pass_ranking: bool = False,
 ) -> WriterOutput:
     """Run the writer agent. Returns full module source + reasoning.
 
@@ -106,8 +112,13 @@ def write(
     :param extra_system: appended to the writer system prompt. Used by arm C
         in Phase 2 iter2 to add finding-type handling guidance without
         touching the default prompt.
+    :param include_pass_ranking: if True and history has ≥ 1 attempt, render
+        a "prior attempts ranked by pass count" block (arms E and F in
+        Phase 2 iter3). Pass counts only — no code, no diffs. The block is
+        a structured restatement of information the writer already has;
+        the goal is to make binary-signal exploration legible.
     """
-    user_msg = _format_user_message(spec, history or [])
+    user_msg = _format_user_message(spec, history or [], include_pass_ranking)
     system = WRITER_SYSTEM + (("\n\n" + extra_system) if extra_system else "")
     resp = _client().messages.create(
         model=MODEL,
@@ -138,13 +149,19 @@ def write(
     )
 
 
-def _format_user_message(spec: str, history: list[Attempt]) -> str:
+def _format_user_message(
+    spec: str,
+    history: list[Attempt],
+    include_pass_ranking: bool = False,
+) -> str:
     parts = [
         "Implement the following specification.\n\n# Specification\n\n",
         spec,
         "\n\n",
     ]
     if history:
+        if include_pass_ranking:
+            parts.append(render_pass_ranking(history))
         parts.append("# Prior attempts\n\n")
         parts.append(
             "Below are your prior attempts and the feedback two independent reviewers gave on each. "
@@ -174,6 +191,57 @@ def _format_user_message(spec: str, history: list[Attempt]) -> str:
     else:
         parts.append("Produce the implementation. Submit via the submit_solution tool.\n")
     return "".join(parts)
+
+
+_PASS_COUNT_RE = re.compile(r"(\d+)\s*/\s*(\d+)")
+
+
+def _parse_pass_count(test_signal: str) -> tuple[int, int] | None:
+    """Extract (passed, total) from a test_signal string like '5 / 17 tests
+    passing'. Returns None for non-numeric signals (crashes, timeouts,
+    collection errors)."""
+    m = _PASS_COUNT_RE.search(test_signal)
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def render_pass_ranking(history: list[Attempt]) -> str:
+    """Render prior attempts as a ranked pass-count list.
+
+    Iter3 H2 intervention: makes the writer's binary-signal exploration
+    explicit. Pass counts only — no code, no diffs, no reasoning. Sorted
+    by pass count descending (the ranking IS the signal); ties broken by
+    attempt index ascending (older attempt cited first within a tie).
+
+    Attempts with no numeric pass count (crashes / timeouts) sort to the
+    bottom under a separate marker so the writer can see them too.
+    Returns empty string if history has no attempts.
+    """
+    if not history:
+        return ""
+    numeric: list[tuple[int, int, int]] = []  # (passed, idx, total)
+    non_numeric: list[tuple[int, str]] = []  # (idx, signal)
+    for idx, att in enumerate(history, start=1):
+        parsed = _parse_pass_count(att.test_signal)
+        if parsed is None:
+            non_numeric.append((idx, att.test_signal))
+        else:
+            passed, total = parsed
+            numeric.append((passed, idx, total))
+    numeric.sort(key=lambda x: (-x[0], x[1]))
+    lines = ["# Your prior attempts on this task, ranked by pass count (highest first)\n"]
+    for passed, idx, total in numeric:
+        lines.append(f"- Attempt {idx}: {passed} / {total} passing")
+    for idx, sig in non_numeric:
+        lines.append(f"- Attempt {idx}: {sig} (no numeric pass count)")
+    lines.append("")
+    lines.append(
+        "If your most recent attempt has a lower pass count than a prior "
+        "attempt, your last change made things worse. Consider reverting "
+        "toward the higher-scoring approach.\n"
+    )
+    return "\n".join(lines) + "\n"
 
 
 def _render_feedback(items: list[dict]) -> str:
