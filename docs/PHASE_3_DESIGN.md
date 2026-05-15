@@ -1,323 +1,506 @@
-# Phase 3 design — clarifying-question architecture
+# Phase 3 design — coherence-dimension review at scale
 
 Status: **design draft**, not implementation brief. Open to revision
 before any runs.
 
-This doc is intentionally standalone. It does not assume Phase 2
-context beyond the one-paragraph motivation; it does not commit to a
-specific oracle or corpus until the design is reviewed.
+A prior Phase 3 design framed the work as a clarifying-question
+architecture closing Phase 2's underspec gap. That framing was
+rejected because the gap is a Phase 2 corpus artifact (its definition
+of "underspec" doesn't map to PR review) and because
+clarifying-question architecture is established in the literature.
+See `docs/PHASE_3_DESIGN_CLARIFYING_QUESTIONS_ARCHIVED.md` for the
+superseded design and the full reasoning. This doc is a fresh start.
 
 ## Research question
 
-**Can a code-generation agent recognize when it should ask a clarifying
-question rather than guess on spec ambiguity, and does a bounded oracle
-("you can ask N yes/no questions") close the underspec convergence gap
-that Phase 2 established is dominated by writer behavior?**
+Phase 1 established that independent multi-agent review catches
+correctness bugs single-agent misses — the `pr_009` XSS finding (see
+[SUMMARY.md](../SUMMARY.md)) was caught by the arbiter across every
+variant that produced it, and missed by single-agent across every
+variant that didn't. Phase 2 showed that the same architectural property
+extends weakly to code generation (~2 tasks across 39 runs under
+variance; see [PHASE_2_FINAL.md](../PHASE_2_FINAL.md)).
 
-This is a different research question than Phase 2 asked. Phase 2 was
-*does multi-agent critique add value over single-agent on code
-generation?* — answered: directionally yes, with bounded effect size
-(~2 tasks across 39 runs). Phase 3 is *can the agent distinguish
-guessable from un-guessable situations, and act on the distinction by
-acquiring information instead of guessing?*
+Both results were on dimensions where the right answer is testable:
+the XSS bug either fires or doesn't; the function either passes the
+test suite or doesn't. **Real code review is dominated by a different
+class of judgment** — the dimensions that don't have a unit test or a
+crash trace to ground them. Senior reviewers comment on abstraction,
+on whether the change belongs where it is, on convention alignment,
+on test quality, on whether the diff is "doing too much." These
+judgments are the ones that distinguish a good review from one that
+just catches bugs.
 
-The shift is from **routing existing information** (Phase 2: same
-spec, same tests, different critic configurations) to **acquiring new
-information** (Phase 3: spec + bounded oracle access).
+**Phase 3 asks whether the multi-agent architectural property
+extends to coherence-dimension review.** Specifically:
 
-## Why this is the right Phase 3
+- Does multi-agent review surface coherence issues (abstraction,
+  consistency, layer-appropriateness, convention alignment, test
+  quality) that single-agent review misses?
+- If yes, is the effect size comparable to, larger than, or smaller
+  than the Phase 1 correctness-dimension effect?
+- Do the Phase 2 failure modes (over-confidence on ambiguous calls,
+  schema-fix neutralizing critic-induced noise) reappear here, or
+  are they writer-loop-specific?
 
-Phase 2 established three constraints that point at clarifying
-questions as the only un-tested intervention:
+This is a structural research question about where the multi-agent
+advantage lives. The hypothesis space includes **"multi-agent
+doesn't help on coherence"** as a real, publishable outcome —
+designing the experiment so that's discoverable is a primary
+constraint.
 
-1. **Critic architecture is well-calibrated under the typed schema.**
-   0 contamination across 551 findings in iter3. The critic side has
-   no remaining design pressure that hasn't been tested.
-2. **Underspec convergence does not exceed 0.5 median in any tested
-   arm.** Six prompt configurations, two underspec tasks, no
-   architecture closes the gap.
-3. **Writer behavior dominates underspec outcomes.** iter3 H2 showed
-   the writer's reasoning about its own trajectory is the load-bearing
-   variable, but the intervention that helps on one underspec failure
-   mode (task_013) hurts on another (task_012).
+## Why this reframe
 
-Clarifying-question architecture is the **only intervention that adds
-information** rather than reshuffling existing signal. The 0.5 median
-ceiling exists because the writer must guess on truly ambiguous specs
-with no path to resolve the ambiguity. A bounded oracle breaks that
-ceiling — or fails to, in which case the underspec gap has a different
-explanation than information availability.
+Three reasons the project should turn back to PR review at scale:
+
+1. **Project target.** pr-arbiter is named for PR review. Phase 1
+   was the foundational claim; Phase 2 was a generalization probe.
+   Phase 3 returning to PR review tests whether Phase 1's result
+   was a planted-bug artifact or a property of the architecture.
+
+2. **Dimension under-explored.** Phase 1's planted-bug corpus had
+   no real way to measure coherence. Phase 2's HumanEval-shaped
+   tasks had no surrounding codebase to be coherent with.
+   Coherence is the dimension senior reviewers actually spend most
+   of their attention on and the one neither phase could touch.
+
+3. **Schema reuse pressure-test.** Phase 2's typed-finding schema
+   (validator-checked `spec_quote`) is the most reusable artifact
+   from the project so far. Whether it adapts cleanly to coherence
+   findings (which don't have spec clauses to quote, but do have
+   code locations to point at) is itself a contribution
+   independent of the architectural claim.
 
 ## Six open design questions
 
-These are the load-bearing decisions. The doc lays out options and
-tradeoffs without picking — picking happens in design review.
+These are the load-bearing decisions, in resolution order. The doc
+lays out options and tradeoffs; final picks happen at design review.
 
-### 1. Oracle design
+### 1. Corpus
 
-The oracle is the entity the writer asks. Four options:
+The corpus is the dominant design decision. Phase 1's planted-bug
+approach won't work — you can't plant coherence issues the way you
+plant XSS bugs. Phase 2's HumanEval-shaped approach won't work —
+those tasks have no surrounding codebase to be coherent with.
 
-**(a) Human-in-loop.** Highest fidelity (real spec author can give
-nuanced answers); lowest scalability (one human per task per run, no
-batching, expensive to redo for variance).
+**(a) Real PRs from open-source repos with maintainer labels.**
+Mine PRs that have review comments tagged with coherence concerns
+("this should live elsewhere," "we use X pattern for this
+everywhere else," "consider extracting"). Ground truth is the
+maintainer's review comments. Scalable; ecologically valid;
+**known ceiling problem** — maintainer comments aren't a complete
+coverage of issues. Many real coherence issues never get
+commented because the reviewer was time-constrained, deferred, or
+the maintainer didn't notice. This bounds (a)'s discrimination
+power from above.
 
-**(b) Pre-authored "spec author" responses.** The corpus author writes
-a Q&A bank per task ahead of time: every plausible question and its
-answer. Scalable (one-time cost), reproducible across seeds. Risk: the
-author anticipates the writer's questions and the writer's job becomes
-"phrase your question to match a Q&A entry." Overfits to what the
-author imagined.
+**(b) Real PRs with synthetic coherence violations introduced.**
+Take clean merged PRs, introduce coherence issues programmatically
+(rename a variable to violate convention, move logic to the wrong
+layer, duplicate a utility that exists elsewhere in the codebase).
+Phase 1's planted-bug methodology but for coherence. Reproducible
+ground truth; **ecologically suspect** because real coherence
+issues don't look like "I broke this on purpose" — they're the
+product of a developer doing their best and not seeing a better
+option.
 
-**(c) Second LLM playing spec-author with access to the test suite.**
-The oracle is an LLM (different model or same model with different
-prompt) that has been given the spec, the test suite, and instructions
-to answer yes/no questions consistent with both. Most adversarially
-interesting: the oracle can answer any question the writer phrases.
-Risk: test-suite access means the oracle could leak ground truth if
-not carefully bounded (e.g. by enforcing yes/no answers only and
-preventing the oracle from quoting tests).
+**(c) Curated PR corpus with senior-reviewer annotations.** Have a
+senior reviewer go through ~30-50 real PRs and annotate every
+coherence issue they would flag, with severity and dimension.
+Ground truth is the annotation. Highest fidelity; most expensive
+(~1-2 hours per PR for a thorough annotation = 30-100 senior-hours
+for one corpus); small sample.
 
-**(d) Structured ambiguity tags in the spec itself.** The corpus
-author marks ambiguous clauses in the spec (e.g.
-`<ambig id="date-order">US or European date order?</ambig>`). The
-writer can resolve a tag by querying it, and the spec author specifies
-the answer per tag. Cheapest, but trivializes the question-asking
-*decision* — the writer just queries every tag. Loses the "recognize
-ambiguity" property.
+**(d) Hybrid: real PRs + maintainer comments + spot annotations.**
+Use (a) as the primary signal, supplement with (c)-style
+annotations on a subset (~10 PRs) to estimate the
+maintainer-comment-recall ceiling. Senior annotations also provide
+the "finding not in any maintainer comment but rated valid"
+category that's where the multi-agent property is most likely to
+show up.
 
-**Tradeoff axis:** fidelity ↔ scalability ↔ trivialization-risk. (a)
-maxes fidelity, loses scalability. (b)/(c) balance both with different
-oracle-leakage profiles. (d) maxes scalability, loses the recognition
-property.
+Tradeoff axis: ecological validity ↔ ground-truth completeness ↔
+authorship cost. (a) is cheap and realistic but ceiling-bounded.
+(b) is cheap and clean but artificial. (c) is gold-standard and
+expensive. (d) gets you (a)'s scale with (c)'s discrimination on
+the subset where it matters.
 
-**Recommendation to consider in review:** (c) with hard constraints on
-the oracle prompt (yes/no answers only; cannot quote tests; cannot
-reveal specific input/output pairs). This is the interesting
-adversarial design and the only one that scales while preserving the
-recognize-then-ask property.
+**Recommendation for review: (d).** Annotate ~10 PRs at the (c)
+fidelity to bound the maintainer-comment ceiling and identify the
+"multi-agent caught something maintainers missed" category.
+Primary metric runs on the full (a) corpus of ~30-50 PRs.
 
-### 2. Question budget
+**Logistics: how does the reviewer see the codebase context?**
+This is a real design question, not a footnote. Real reviewers
+have access to the repo. Phase 3 reviewers need at minimum the
+touched files in full (not just the diff), and probably more.
+See design question 3.
 
-Three options: 0, 1, unbounded.
+### 2. Coherence dimensions
 
-- **0 questions** is the Phase 2 baseline (already measured).
-- **1 yes/no question per task** is the strongest design constraint:
-  forces the writer to pick the *most* ambiguous point. If 1 question
-  is enough to close the underspec gap, the gap is genuinely about
-  one binary choice per task.
-- **N questions (N small, e.g. 3)** lets the writer explore. Risk of
-  degenerating to "ask everything."
-- **Unbounded** probably degenerates to "writer asks for the tests"
-  or near-equivalent. Not interesting.
+"Coherence" is a bucket. The doc must enumerate which specific
+dimensions are in scope. Candidate list:
 
-The interesting comparison is **0 vs 1**. If 1 question doesn't move
-the underspec rate substantially over 0, the underspec problem has a
-different shape than "writer can't ask." If 1 question moves it
-substantially (e.g. 0.5 → 0.8 median), the binary-resolution
-hypothesis holds and the architecture is validated. N > 1 is a
-follow-up if 1 is insufficient but moves in the right direction.
+- **Abstraction appropriateness** — is the change at the right
+  level of abstraction, or paying complexity for a one-off case?
+- **Convention alignment** — does the change follow patterns
+  established elsewhere in the codebase?
+- **Layer appropriateness** — is the logic in the right module,
+  file, or layer, or leaking concerns across?
+- **Test quality** — does the test test behavior or implementation?
+  Coverage at the right granularity?
+- **Duplication** — does this change duplicate something that
+  exists elsewhere, or could the new code share an existing utility?
+- **Naming and clarity** — are the names accurate, conventional,
+  unambiguous?
 
-**Recommendation to consider in review:** primary comparison is
-**0-question (Phase 2 baseline) vs 1-question**. Add **3-question** as
-a secondary comparison only if 1-question is insufficient.
+Not all six are equally good candidates for Phase 3:
 
-### 3. Corpus
+- **Dimensions that don't need cross-file synthesis** are unlikely
+  to discriminate multi-agent vs single-agent. Naming, for example,
+  can mostly be judged from the diff. Abstraction-within-a-function
+  is local.
+- **Dimensions that require synthesizing across the codebase** are
+  where the architectural property might pay off. Layer
+  appropriateness, convention alignment, and duplication all
+  require the reviewer to compare the change against patterns
+  elsewhere.
 
-**Phase 2's 2-of-13 underspec slice was the bottleneck.** Phase 3
-should have ≥ 20 underspec tasks. Two options:
+**Recommendation for review: convention alignment + layer
+appropriateness + duplication.** These three require cross-file
+synthesis, which is where a second independent reviewer might
+catch what a first reviewer missed. Test quality is interesting
+but the ground-truth comparison is harder (when is a test "the
+right test"?). Abstraction and naming are weaker discriminators.
 
-**(a) Extend phase2_corpus/ with new underspec tasks.** Keep the same
-manifest format, add tasks 014-040. Total corpus ~30-40 tasks with
-majority underspec. Preserves comparability with Phase 2.
+Drop to 3 dimensions for the initial Phase 3; expand to 4 if data
+suggests the discrimination story is real and worth more
+investment.
 
-**(b) Build a new phase3_corpus/.** Same task structure (spec.md,
-tests.py, solution.py) but designed from scratch for clarifying-question
-discrimination. Each task spec has a specific ambiguity the test suite
-resolves one way. The Q&A bank or oracle prompt is the new artifact.
+### 3. Reviewer/arbiter input
 
-Either way the corpus construction is the dominant cost of Phase 3.
-Estimate **2-4 hours per underspec task** for hand-authoring spec +
-tests + reference solution + (if not using oracle (c)) Q&A bank or
-ambiguity tags. 20 tasks = 40-80 hours.
+Phase 1 reviewers saw the PR diff. Phase 3 reviewers need more.
 
-**Recommendation to consider in review:** (a) with target N = 20
-underspec tasks (Phase 2's 2 + 18 new). Preserves comparability and
-keeps the manifest format. Half the new tasks should have a single
-binary ambiguity (testing 1-question sufficiency); half should have
-multiple ambiguities (testing multi-question and recognition-of-which).
+**(a) Diff only.** Same as Phase 1. Forces the reviewer to reason
+from the change alone. Loses most coherence signal — a reviewer
+can't flag "this duplicates X" without seeing X.
 
-### 4. What counts as a "good" question
+**(b) Diff + touched files in full.** Standard human reviewer
+context. Captures local coherence (within touched files), misses
+cross-file patterns (conventions established elsewhere).
 
-The writer's question-asking decision should be evaluable independent
-of whether the writer converges. Two reasons:
+**(c) Diff + touched files + RAG over the rest of the repo.** The
+reviewer can pull in similar code, convention examples, related
+utilities via retrieval. Most realistic; **introduces a confound** —
+is the architecture winning, or is the retrieval doing the work?
+If multi-agent's retrieval happens to surface something
+single-agent's didn't, the attribution is ambiguous.
 
-- A writer that asks a useless question and then guesses correctly
-  isn't validating the architecture.
-- A writer that asks a good question and then ignores the answer is a
-  different failure mode than asking a bad question.
+**(d) Diff + touched files + curated "codebase context" doc per
+PR.** A human-authored summary of "things a reviewer would need to
+know" — relevant conventions, similar code locations, layer
+boundaries. Most experimentally controlled; **least scalable**
+(authorship overhead per PR); introduces author bias (the context
+doc primes the reviewer toward the issues the author thought to
+include).
 
-Candidate question-quality measures:
+Tradeoff: realism ↔ experimental cleanliness.
 
-- **Reduces ambiguity space.** The spec has N plausible interpretations
-  pre-question; the answer rules out ≥ 1. Operationalize as: the
-  pre-authored Q&A bank has a finite set of "useful" questions; the
-  writer's question matches one of them (LLM-judged similarity).
-- **Targets a test-discriminating ambiguity.** The question's resolution
-  affects which interpretation passes the tests. Operationalize: the
-  Q&A bank tags which questions are test-relevant; non-tagged questions
-  are scored 0 regardless of how well-formed they are.
-- **Yes/no answerable.** Open-ended questions are out of bounds by
-  design (oracle answers yes/no only). Operationalize: the oracle
-  refuses non-binary questions and the writer must reformulate.
+The retrieval option (c) creates a real attribution problem. If
+single-agent gets retrieval too, the two arms differ only in
+whether arbiter runs — the retrieval is held constant. That's the
+clean design. Both arms use the same retrieval, and the
+architectural question is what the second independent pass adds on
+top.
 
-**Pre-registration constraint:** question quality must be scored on
-the question alone, not on the downstream outcome. The same question
-should get the same quality score regardless of whether the writer
-converges. Otherwise the metric measures "lucky question" not "good
-question."
+**Recommendation for review: (c) with retrieval held constant
+across arms.** Both single-agent and multi-agent get the same RAG
+component. Retrieval is a fixed input, not a varied condition.
+Phase 3's architectural question is whether the arbiter adds
+discrimination over the reviewer with the same context — this
+matches Phase 1's setup conceptually (same input to both passes;
+arbiter is the additional pass).
 
-### 5. Architectural placement
+Alternative for review consideration: run a tiny "retrieval
+ablation" (no retrieval vs retrieval) on a 5-PR subset to confirm
+retrieval helps both arms equally. If retrieval helps one arm
+more, attribution gets harder and the design needs revisiting.
 
-Two options:
+### 4. Schema adaptation
 
-**(a) Writer asks.** The writer decides when to ask, what to ask, and
-incorporates the answer into its next attempt. Natural design;
-matches the Phase 2 writer-loop structure.
+Phase 2's typed-finding schema requires `spec_quote` on
+`spec-violation` findings, validated as substring match against the
+spec. Coherence findings don't have a spec clause to quote — they
+have **a code location elsewhere in the repo** that supports the
+claim ("convention X in `auth/handler.py:42`"; "duplicate of
+`utils/format.py:18`").
 
-**(b) Reviewer/arbiter asks on the writer's behalf.** The typed
-schema already has critics flagging `spec-interpretation` findings.
-The reviewer could be extended to *promote* a spec-interpretation
-finding into a question to the oracle. The writer never directly
-queries.
+Two changes to the schema, both substantive enough to deserve
+design-doc treatment:
 
-Phase 2 evidence is ambiguous on which is right:
+**(a) `evidence_pointer` field replacing `spec_quote`.** A
+coherence-violation finding requires citing a specific file path
+and line range that supports the claim. Validator rule: the path
+must exist in the repo at the PR's base commit AND the line range
+must be in range of the file's length. Optional stronger validator:
+the cited code must contain a token/symbol the reviewer's
+description mentions (verbatim substring, like Phase 2's spec_quote
+match). The stronger validator is more adversarially robust but
+may be too strict for real coherence claims that involve patterns
+rather than specific tokens.
 
-- The typed schema validated that critics correctly identify
-  spec-interpretations (0 contamination). This is evidence (b) might
-  work: the critic-asks-clarification path reuses a calibrated
-  component.
-- But: arm F's task_013 win showed the *writer* can act on critic
-  findings effectively when given the right context. (b) would still
-  need the writer to incorporate the answer. So (b) ≠ less writer
-  work.
+Open sub-question for review: is the verbatim-substring validator
+viable for coherence pointers, or does it need to be looser
+(e.g., the cited file is in the same module/directory as the
+described pattern)?
 
-**Recommendation to consider in review:** (a) for the primary
-experiment (simpler design, clearer attribution of question-asking to
-the writer's reasoning). (b) as a follow-up if (a) succeeds.
+**(b) `finding_type` enum extended.** Phase 2 had `spec-violation`
+(quotable) vs `spec-interpretation` (judgment call). Phase 3
+candidate:
 
-### 6. Comparison arms
+- `coherence-violation` — there's a specific code location that
+  supports the claim. `evidence_pointer` required.
+- `coherence-judgment` — the reviewer is making an experienced
+  taste call without a specific pointer ("this feels like it
+  belongs in the service layer"). No pointer required.
+- `correctness-finding` — preserves Phase 1's bug-catching as a
+  separate category. Phase 3 isn't primarily about correctness but
+  if the reviewer happens to spot a real bug, it should be reported
+  in its own category.
 
-Phase 3's writer-alone baseline cannot be the literal Phase 2 arm A:
+The Phase 2 lesson — `coherence-judgment` findings should be
+weighted lower than `coherence-violation` by downstream consumers,
+because the validator can't bound the critic's confidence on them
+— transfers directly. Whether to render judgment-type findings to
+the human reviewer at all, or only the pointer-validated ones, is
+a design choice. Phase 2 chose to show both with type tagging;
+Phase 3 should do the same to preserve comparability.
 
-- If iter3 H2 validates that pass-count ranking helps (it didn't pass
-  pre-reg but had a strong concentrated effect), the Phase 3 baseline
-  should include ranking. Otherwise Phase 3 is testing
-  clarifying-questions against a strawman writer.
+### 5. Ground-truth comparison
 
-Proposed Phase 3 comparison arms:
+How is a finding scored?
 
-- **G** — best Phase 2 writer config (typed schema + ranking, no
-  iter2 prompt, i.e. arm F) + 0 questions. The Phase 3 baseline.
-- **H** — G + 1 yes/no question per task.
-- **I** — G + 3 yes/no questions per task (if H succeeds).
-- (J — reviewer-asks variant, if H succeeds.)
+**(a) Recall against maintainer comments.** Reviewer findings
+matched to maintainer comments via LLM-judged similarity. Score
+is fraction of maintainer comments surfaced. Captures "did the
+reviewer find what humans found." Bounded above by the
+maintainer-comment-recall ceiling discussed in design question 1.
 
-Pre-register arm G's underspec rate on the Phase 3 corpus before
-running H. Otherwise G's number is contaminated by the corpus changes
-relative to Phase 2.
+**(b) Precision against maintainer comments.** Same matching,
+score is fraction of reviewer findings matching a maintainer
+comment. Captures "is the reviewer producing real signal." Penalizes
+findings that humans didn't comment on, including real issues
+humans missed.
 
-## Pre-registration constraints to bake in
+**(c) Senior-reviewer rating.** A senior reviewer rates each
+finding (valid / invalid / debatable). Highest fidelity; expensive;
+requires senior-hours per evaluation run. Doesn't scale to 50 PRs
+× 3 seeds × 2 arms = 300 ratings per experiment.
 
-These are the lock-in points that must be settled before Phase 3 runs:
+**(d) F1 against maintainer comments PLUS senior-reviewer rating
+on findings not matching any comment.** F1 captures the "found
+what humans found" measure cheaply across all findings; senior
+ratings only fire on the residual set (findings not matched to a
+comment), which is where the architectural property could
+plausibly differentiate arms.
 
-- **Primary metric: underspec convergence rate.** Defined as: fraction
-  of underspec tasks converged in ≤ 3 iters, across all seeds.
-- **Non-underspec convergence must not regress vs Phase 2 best arm**
-  on the comparable subset of corpus (the 11 non-underspec Phase 2
-  tasks, if (a) corpus extension). Question-asking on non-underspec
-  tasks is a failure mode (the writer asks when it shouldn't).
-- **Question-asking rate, pre-registered as a range.** E.g. "between
-  60% and 95% of underspec tasks should ask a question; outside that
-  range is suspect (either the writer doesn't recognize ambiguity or
-  it asks indiscriminately)." Optimizing this post-hoc is forbidden.
-- **Oracle response policy locked.** The Q&A bank / oracle prompt is
-  finalized before runs. No retroactive "the oracle would have
-  answered X." All oracle interactions logged.
-- **Strict success criterion for "Phase 3 succeeds."** Pre-register:
-  arm H underspec convergence rate ≥ arm G + 0.2 (i.e. closes at
-  least 40% of the [0, 1] gap from Phase 2's 0.5 median). Smaller
-  improvements are suggestive but not confirmation.
+**The interesting Phase 3 result would be reviewer findings that
+maintainers MISSED but a senior reviewer rates as valid.** That's
+the multi-agent architectural property worth measuring — surfacing
+coherence issues humans didn't catch but should have. Only (d) can
+find this. (a) and (b) bound the measurement from above and below;
+(c) is the ideal but doesn't scale.
 
-## Success criteria for the design (what makes this doc ready to implement)
+**Recommendation for review: (d).** Senior-reviewer rating fires
+only on the residual; the maintainer-comment F1 covers the rest.
+Cost is bounded by residual-set size (~10-30 ratings per arm-seed
+combination if findings-not-matched are a small minority).
 
-This doc is ready to implement against when:
+**Mandatory blinding constraint:** the senior reviewer must not
+know which arm produced a finding when rating it. Otherwise the
+rating can retroactively elevate multi-agent findings into "valid
+coherence issues maintainers missed." Phase 3 result is only
+meaningful if blinding is enforced procedurally (random shuffle of
+findings across arms before sending to rater; arm-of-origin not
+in the rater interface).
 
-- One oracle option (1) is selected with explicit rationale.
-- Question budget (2) is locked at 0 vs 1 (and optionally 3).
-- Corpus plan (3) has committed task counts and authorship cost
-  estimate.
-- Question-quality metric (4) is operationalized into a single rubric.
-- Architectural placement (5) is chosen for the primary experiment.
-- Comparison arms (6) are listed with Phase 2 carryover settings.
-- Pre-registration constraints are locked into a draft
-  `results/phase3/phase3_preregistration.md` template ready to fill
-  in.
+### 6. Variance and sample size
+
+Phase 2's lesson: small-n single-seed produces overfit conclusions.
+
+**Sample size.** Phase 1 was small (single-digit PRs). Phase 3 for
+variance reasons needs ≥30 PRs to discriminate effect sizes near
+Phase 1's. ~50 PRs gives more headroom on cross-repo generalization
+if that's in scope.
+
+**Seeds per arm.** Phase 2's 3 seeds was load-bearing. Phase 3 should
+match. Two arms × 3 seeds × 50 PRs = 300 reviewer-runs total per
+experiment.
+
+**Single repo vs multiple repos.** Single repo controls for
+convention variance but tests generalization weakly. Multiple repos
+test generalization but introduce repo-as-confound (some repos may
+be more amenable to coherence review than others).
+
+Recommendation for review: **3-5 repos with ~10 PRs each.** Enough
+to test generalization, few enough that per-repo conventions can be
+characterized as part of the corpus annotation. Pre-register
+per-repo expected effect-size variance; if multi-agent helps in
+one repo and not others, that's a finding to report, not noise to
+average over.
+
+**Effect-size pre-registration.** Phase 2 established its noise
+floor empirically (±2 tasks across 39 runs between arms A and B).
+Phase 3 should do the same: run the single-agent baseline first on
+the full corpus, then bound noise on coherence-recall via the seed
+variance. The architectural claim (multi-agent helps on coherence)
+needs to clear that noise floor by a pre-registered margin.
+
+**Failure-mode pre-registration.** What does "multi-agent doesn't
+help on coherence" look like in the data? Possibilities to
+pre-register:
+
+- Multi-agent finds the same maintainer-comment matches as
+  single-agent within noise (recall flat).
+- Multi-agent's extra findings (not in maintainer comments) are
+  rated invalid by the senior reviewer (precision drops; no real
+  discrimination).
+- Multi-agent helps on one or two dimensions but not the others
+  (specify which dimensions in advance).
+
+Each of these has a different downstream implication; pre-registering
+them prevents the iter1-style post-hoc narrative that Phase 2
+caught.
+
+## Pre-registration constraints to lock in before runs
+
+These must be settled before any Phase 3 run:
+
+- **Primary metric chosen and operationalized.** Likely F1 on
+  coherence findings vs maintainer comments, with senior-reviewer
+  rating filling in for the residual set.
+- **Coherence dimensions enumerated.** 3-4 specific dimensions, with
+  the rubric for each.
+- **Schema adaptation specified.** `evidence_pointer` validator
+  rules (path existence, line-range bounds, optional substring
+  match). `finding_type` enum locked. Render rules for each type.
+- **Variance protocol locked.** Seeds, sample size, noise-floor
+  estimation procedure. Pre-register the single-agent-only baseline
+  run before multi-agent runs (matches Phase 2's sequential
+  discipline).
+- **Failure-mode hypotheses pre-registered.** What "multi-agent
+  helps" and "multi-agent doesn't help" look like in data, with
+  effect-size thresholds.
+- **Senior-reviewer protocol.** Rubric, blinding procedure,
+  inter-rater calibration if more than one rater.
+- **Honest framing.** A "multi-agent doesn't help on coherence"
+  outcome must be publishable. The doc and the pre-registration
+  must not be structured to produce a positive result either way.
+
+## Success criteria for this design doc
+
+The doc is ready to implement against when design review settles:
+
+- Corpus option (1) selected with rationale and a path to acquire
+  it (which repos, what scale, who does the annotations).
+- Coherence dimensions (2) enumerated and prioritized (3-4 picked).
+- Reviewer input strategy (3) chosen, with confound implications
+  acknowledged.
+- Schema adaptation (4) specified concretely (`evidence_pointer`
+  validator rules; `finding_type` enum committed).
+- Ground-truth comparison (5) selected with cost estimate (residual
+  set size; senior-reviewer hours required).
+- Sample size and variance protocol (6) committed.
+- Pre-registration template draft exists at
+  `results/phase3/phase3_preregistration.md` (template, not filled
+  in — fill happens once corpus is in place).
 
 ## What this design doc is NOT
 
-- **Not an implementation brief.** Code design comes after design
-  review.
-- **Not committing to a specific oracle.** Recommendations are listed
-  for review; the design review picks one with rationale.
-- **Not estimating implementation cost in detail.** The corpus
-  expansion dominates and needs scoping separately once the corpus
-  plan (3) is selected.
-- **Not promising a timeline.** Design first; iteration after.
+- Not an implementation brief. The implementation brief comes after
+  design review and corpus scoping.
+- Not committed to a corpus, schema, or metric until design review.
+- Not a fork of the archived clarifying-question doc. Different
+  research question, different methodology.
+- Not promising effect sizes. "Multi-agent doesn't help on
+  coherence" is in the hypothesis space and the design must let
+  that outcome be discovered.
 
-## Open questions for review
+## Honest framing requirement
 
-The reviewer's job on this doc is to settle the six design questions
-and identify any seventh that I missed. Specific questions for
-review:
+The previous Phase 3 design erred toward measurement of a known
+architecture. This reframe is supposed to put a real structural claim
+at risk — that the Phase 1 multi-agent advantage extends to
+coherence.
 
-- Is oracle option (c) (LLM-as-spec-author with test access) too risky
-  on oracle-leakage even with hard prompt constraints? If yes,
-  fallback to (b) pre-authored Q&A with what mitigation against
-  author-overfit?
-- Is the underspec-only corpus expansion (option a) the right scope,
-  or does Phase 3 need both underspec and a fresh non-underspec
-  control to test the "writer asks when it shouldn't" failure mode?
-- Should the 0 vs 1 question budget comparison include a *forced ask*
-  arm where the writer must always ask exactly one question? This
-  decouples the "recognize ambiguity" decision from the "use the
-  answer" decision.
-- Phase 2 arm F's task_013 3/3 result might mean ranking is enough
-  for some underspec tasks; Phase 3 should report whether the
-  improvement from clarifying-questions stacks with ranking or
-  cannibalizes it.
+Three constraints flow from this:
+
+1. **Pre-register what "doesn't help" looks like.** Not "any positive
+   effect counts." A pre-registered effect-size threshold tied to
+   the empirically-bounded noise floor.
+2. **Blind the senior reviewer.** The rater cannot know which arm
+   produced a finding when rating it. Otherwise the rating measures
+   "rater knew the architecture and was inclined to agree."
+3. **Report unflattering results in the TL;DR.** Phase 2's iter1
+   writeup buried the variance-fragility of its single-seed claims
+   in paragraph 8. Phase 3 must report the headline finding in the
+   TL;DR regardless of direction. If multi-agent doesn't help on
+   coherence, that's the headline.
+
+## Open questions for the reviewer of this doc
+
+The reviewer of this design (the human, not the agent) should settle:
+
+- **Reframe scope.** Is coherence-dimension review at scale the
+  right Phase 3, or is there a third option that's better than
+  both clarifying-questions and coherence? (E.g., adversarial
+  multi-agent — one critic plays defense, one plays offense, on
+  real PRs.)
+- **Corpus path.** Is option (d) — real PRs + maintainer comments
+  + spot senior annotations — the right primary path, or is the
+  maintainer-comment-recall ceiling too low to discriminate? If
+  too low, fall back to (c) gold-standard at smaller N.
+- **Code-generation carryover.** Should Phase 3 include any
+  code-generation tasks at all, or is the reframe a clean break
+  from Phase 2's writer-loop? Default in this doc is **clean
+  break**; revisit if there's an argument for carryover.
+- **Repo scope.** 3-5 repos × ~10 PRs each, or single repo × ~50
+  PRs? Single repo controls more; multi-repo tests generalization
+  the project's headline ultimately needs.
+- **Schema strictness.** Verbatim substring match for
+  `evidence_pointer`, or looser "same directory" rule? Strict
+  match is more adversarially robust (Phase 2's lesson); looser
+  match is more realistic for coherence findings that involve
+  patterns rather than specific tokens.
+- **Architecture variants.** Should Phase 3 include a "mutual
+  triage" variant (the Phase 1 iter3 + iter4 fix)? Phase 1 showed
+  it helped on the over-rotation failure mode for correctness
+  findings. Whether it transfers to coherence is its own question
+  and adds an arm to the experiment.
 
 ## Suggested timeline (no commitment)
 
-Design review → finalize 6 design choices → corpus extension (highest
-cost, ~40-80 hours) → infrastructure (oracle, question budget,
-logging) → pre-registration → runs → writeup. Realistic 4-6 weeks of
-elapsed time for one researcher; corpus authorship is the long pole.
-
-## Related work that would inform implementation
-
-(Not surveyed here; would inform implementation but not the design
-decisions above.) Self-asking / clarifying-question literature in the
-instruction-following and agent-research lines. Specifically: research
-on when models should defer to humans vs proceed, and on
-disambiguation-via-question vs disambiguation-via-multi-shot.
+Design review → finalize 6 design choices → corpus authorship
+(highest cost; bounded above by senior-reviewer availability for
+the spot-annotation subset) → infrastructure (reviewer/arbiter
+modules with `evidence_pointer` validator; RAG component; matcher
+for maintainer-comments-vs-findings; senior-rating tool) →
+pre-registration → runs → writeup. Realistic 6-10 weeks elapsed
+for one researcher; corpus authorship and senior-annotation are the
+long poles.
 
 ## Deliverables when Phase 3 implementation completes
 
 - `docs/PHASE_3_HANDOFF.md` — implementation brief (this doc's
-  successor)
-- `phase3_corpus/` (or extended `phase2_corpus/`) — task set
-- `agents/oracle.py` — oracle implementation per chosen option
-- `agents/writer.py` extension — question-asking pathway
-- `results/phase3/phase3_preregistration.md` — pre-registration
-- `results/phase3/<arm>/seed<N>/<task>.json` — per-run data
-- `PHASE_3_SUMMARY.md` — writeup
+  successor, written after design review).
+- `phase3_corpus/` — PR snapshots + maintainer comments +
+  spot-annotation subset + per-repo convention summaries.
+- `agents/reviewer_coherence.py`, `agents/arbiter_coherence.py` —
+  reviewer + arbiter with `evidence_pointer` validator.
+- `agents/retrieval.py` — RAG component, fixed across arms.
+- `eval/match_findings.py` — finding-to-maintainer-comment matcher.
+- `eval/senior_rating_tool.py` — blinded rating interface.
+- `results/phase3/phase3_preregistration.md` — pre-registration.
+- `results/phase3/<arm>/seed<N>/<pr_id>.json` — per-run data.
+- `PHASE_3_SUMMARY.md` — writeup, headline finding first regardless
+  of direction.
