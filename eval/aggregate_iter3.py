@@ -262,7 +262,14 @@ def main() -> None:
     print("Per-task convergence (arm × task → n_converged / 3 across seeds):")
     print(f"  {'task':12s} {'diff':10s} " + " ".join(f"{a:>5s}" for a, _, _ in ARMS))
     for t in tasks:
-        if t in ("task_007", "task_012", "task_013") or aggregate["per_task_by_arm"]["A"][t]["stability"] != "stable_pass":
+        # Show the task if any arm is non-stable_pass on it. Previously
+        # filtered on arm A only, which silently hid tasks that other arms
+        # regressed on.
+        any_unstable = any(
+            aggregate["per_task_by_arm"][arm][t]["stability"] != "stable_pass"
+            for arm, _, _ in ARMS
+        )
+        if any_unstable:
             cells = []
             for arm, _, _ in ARMS:
                 cells.append(f"{aggregate['per_task_by_arm'][arm][t]['n_converged']}/3")

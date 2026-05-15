@@ -247,10 +247,14 @@ def main(
     if task_filter:
         tasks = [t for t in tasks if t in task_filter]
 
-    # Default output root advances with the active iter. iter3 arms (D/E/F)
-    # land in results/phase2/iter3/. iter2 arms (A/B/C) writing fresh data
-    # land in iter2 as before — pass --iter to override.
-    out_root = out_root or (RESULTS_DIR / "iter3")
+    # Default output root: per-arm, matches the iter where each arm's
+    # canonical results live. iter2 arms (A/B/C) → results/phase2/iter2/;
+    # iter3 arms (D/E/F) → results/phase2/iter3/. Override with `out_root`
+    # if you want to land elsewhere. arm_label starts with the canonical
+    # arm letter so a prefix check is robust to legacy aliases.
+    if out_root is None:
+        canonical_letter = arm_label[0]
+        out_root = (RESULTS_DIR / "iter2") if canonical_letter in ("A", "B", "C") else (RESULTS_DIR / "iter3")
     out_dir = out_root / arm_label / f"seed{seed}"
     out_dir.mkdir(parents=True, exist_ok=True)
 

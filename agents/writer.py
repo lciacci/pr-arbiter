@@ -102,7 +102,7 @@ def write(
     history: list[Attempt] | None = None,
     task_id: str = "",
     extra_system: str = "",
-    include_pass_ranking: bool = False,
+    pass_ranking_block: str | None = None,
 ) -> WriterOutput:
     """Run the writer agent. Returns full module source + reasoning.
 
@@ -112,13 +112,12 @@ def write(
     :param extra_system: appended to the writer system prompt. Used by arm C
         in Phase 2 iter2 to add finding-type handling guidance without
         touching the default prompt.
-    :param include_pass_ranking: if True and history has ≥ 1 attempt, render
-        a "prior attempts ranked by pass count" block (arms E and F in
-        Phase 2 iter3). Pass counts only — no code, no diffs. The block is
-        a structured restatement of information the writer already has;
-        the goal is to make binary-signal exploration legible.
+    :param pass_ranking_block: pre-rendered pass-ranking block (or None).
+        Caller (writer_loop) renders once and passes the same string both
+        here and to the per-attempt log, ensuring the writer and the log
+        cannot diverge. None means no ranking block is inserted.
     """
-    user_msg = _format_user_message(spec, history or [], include_pass_ranking)
+    user_msg = _format_user_message(spec, history or [], pass_ranking_block)
     system = WRITER_SYSTEM + (("\n\n" + extra_system) if extra_system else "")
     resp = _client().messages.create(
         model=MODEL,
@@ -152,7 +151,7 @@ def write(
 def _format_user_message(
     spec: str,
     history: list[Attempt],
-    include_pass_ranking: bool = False,
+    pass_ranking_block: str | None = None,
 ) -> str:
     parts = [
         "Implement the following specification.\n\n# Specification\n\n",
@@ -160,8 +159,8 @@ def _format_user_message(
         "\n\n",
     ]
     if history:
-        if include_pass_ranking:
-            parts.append(render_pass_ranking(history))
+        if pass_ranking_block:
+            parts.append(pass_ranking_block)
         parts.append("# Prior attempts\n\n")
         parts.append(
             "Below are your prior attempts and the feedback two independent reviewers gave on each. "
