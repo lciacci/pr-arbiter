@@ -1,0 +1,31 @@
+{
+  "task_id": "task_001",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 13,
+  "final_total": 13,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "from urllib.parse import unquote_plus\n\n\ndef parse_query_string(qs: str) -> dict[str, list[str]]:\n    \"\"\"Parse a URL query string into a dict mapping each key to a list of its values.\n    \n    Handles percent-encoding, '+' as space, multiple values per key,\n    empty values, keys without '=', and stray '&' characters.\n    \"\"\"\n    result: dict[str, list[str]] = {}\n    \n    if not qs:\n        return result\n    \n    pairs = qs.split('&')\n    \n    for pair in pairs:\n        if not pair:  # skip empty strings from stray '&'\n            continue\n        \n        if '=' in pair:\n            key, value = pair.split('=', 1)\n        else:\n            key = pair\n            value = ''\n        \n        key = unquote_plus(key)\n        value = unquote_plus(value)\n        \n        if key not in result:\n            result[key] = []\n        result[key].append(value)\n    \n    return result\n",
+      "reasoning": "The spec is clear and well-defined. I'll implement parse_query_string using urllib.parse.unquote_plus to handle both percent-encoding and '+' as space. I'll split on '&' to get pairs, skip empty pairs (stray '&'), then split each pair on '=' (first occurrence only) to get key/value. Keys without '=' get empty-string value. All values for a key are collected in order into a list.",
+      "test_signal": "13 / 13 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 13,
+      "failed": 0,
+      "errors": 0,
+      "total": 13,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

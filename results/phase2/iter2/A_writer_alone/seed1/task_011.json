@@ -1,0 +1,31 @@
+{
+  "task_id": "task_011",
+  "mode": "writer-alone",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 14,
+  "final_total": 14,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 011 \u2014 Topological sort with cycle detection.\n\nImplementation notes:\n- Uses Kahn's algorithm (BFS-based) with a min-heap to enforce lexicographic\n  ordering when multiple nodes have the same in-degree at any given step.\n- Validates dangling successors before attempting the sort.\n- Detects cycles by checking whether all nodes were processed.\n- Reports cycle members by identifying nodes whose in-degree never reached 0.\n\"\"\"\n\nimport heapq\nfrom collections import defaultdict\n\n\ndef topological_sort(graph: dict[str, list[str]]) -> list[str]:\n    \"\"\"Return a topological ordering of `graph` nodes.\n\n    Parameters\n    ----------\n    graph:\n        Adjacency list mapping each node to its list of successors.\n\n    Returns\n    -------\n    list[str]\n        Nodes in topological order (predecessor before successor).\n        Ties broken by lexicographic order.\n\n    Raises\n    ------\n    ValueError\n        If the graph contains a cycle (including self-loops) or if a\n        successor node is not itself a key in `graph`.\n    \"\"\"\n    if not graph:\n        return []\n\n    # --- Validate: every successor must be a key in graph ---\n    for node, successors in graph.items():\n        for successor in successors:\n            if successor not in graph:\n                raise ValueError(\n                    f\"node '{successor}' is referenced as a successor of \"\n                    f\"'{node}' but is not a key in the graph\"\n                )\n\n    # --- Kahn's algorithm ---\n    # Compute in-degrees\n    in_degree: dict[str, int] = {node: 0 for node in graph}\n    for node, successors in graph.items():\n        for successor in successors:\n            in_degree[successor] += 1\n\n    # Min-heap seeded with all nodes whose in-degree is 0 (lex order)\n    heap: list[str] = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    result: list[str] = []\n\n    while heap:\n        node = heapq.heappop(heap)\n        result.append(node)\n        for successor in graph[node]:\n            in_degree[successor] -= 1\n            if in_degree[successor] == 0:\n                heapq.heappush(heap, successor)\n\n    # --- Cycle detection ---\n    if len(result) != len(graph):\n        # Nodes with remaining in-degree > 0 are part of (or reachable from)\n        # a cycle.\n        cycle_nodes = sorted(\n            node for node, deg in in_degree.items() if deg > 0\n        )\n        raise ValueError(\n            \"cycle detected involving: \" + \", \".join(cycle_nodes)\n        )\n\n    return result\n",
+      "reasoning": "I implemented topological sort using Kahn's algorithm (BFS with in-degree tracking) combined with a min-heap to ensure lexicographic ordering when multiple nodes are ready at the same time. Key design decisions:\n\n1. **Dangling successor validation**: Before the sort, I check every successor against the graph's keys and raise ValueError with an informative message if any is missing.\n2. **Kahn's algorithm**: Tracks in-degrees, uses a min-heap to always pick the lexicographically smallest ready node, and processes nodes until the heap is empty.\n3. **Cycle detection**: After Kahn's algorithm, if not all nodes were processed, the remaining nodes (in-degree > 0) are part of or downstream of a cycle. I collect and sort them lexicographically for the error message.\n4. **Self-loops**: Handled automatically \u2014 a self-loop means the node's in-degree never reaches 0.\n5. **Empty graph**: Returns `[]` immediately.\n6. **Determinism**: The min-heap guarantees that among equally-eligible nodes, we always pick lexicographically smallest, making the output deterministic.",
+      "test_signal": "14 / 14 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 14,
+      "failed": 0,
+      "errors": 0,
+      "total": 14,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

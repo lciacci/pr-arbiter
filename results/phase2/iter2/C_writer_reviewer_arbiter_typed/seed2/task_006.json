@@ -1,0 +1,31 @@
+{
+  "task_id": "task_006",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 15,
+  "final_total": 15,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 006 \u2014 Token bucket rate limiter\n\"\"\"\n\nimport time\n\n\nclass TokenBucket:\n    def __init__(self, capacity: float, refill_rate: float, clock=None):\n        if capacity <= 0:\n            raise ValueError(f\"capacity must be positive, got {capacity}\")\n        if refill_rate <= 0:\n            raise ValueError(f\"refill_rate must be positive, got {refill_rate}\")\n\n        self.capacity = capacity\n        self.refill_rate = refill_rate\n        self._clock = clock if clock is not None else time.monotonic\n\n        # Start full\n        self._tokens = float(capacity)\n        self._last_refill_time = self._clock()\n\n    def _refill(self):\n        \"\"\"Lazily refill tokens based on elapsed time.\"\"\"\n        now = self._clock()\n        elapsed = now - self._last_refill_time\n        if elapsed > 0:\n            self._tokens = min(self.capacity, self._tokens + elapsed * self.refill_rate)\n            self._last_refill_time = now\n\n    def try_consume(self, tokens: float = 1.0) -> bool:\n        if tokens <= 0:\n            raise ValueError(f\"tokens must be positive, got {tokens}\")\n\n        # A request for more tokens than capacity can never succeed\n        if tokens > self.capacity:\n            return False\n\n        self._refill()\n\n        if self._tokens >= tokens:\n            self._tokens -= tokens\n            return True\n        return False\n\n    def tokens_available(self) -> float:\n        self._refill()\n        # Clamp to [0, capacity] for safety\n        return max(0.0, min(self.capacity, self._tokens))\n",
+      "reasoning": "I implemented the TokenBucket class exactly as specified. Key design decisions:\n1. The bucket starts full (capacity tokens).\n2. Refill is lazy \u2014 happens on try_consume and tokens_available calls.\n3. ValueError is raised for invalid constructor args and invalid token counts.\n4. Requests exceeding capacity always return False without raising.\n5. tokens_available always clamps to [0, capacity].\n6. The clock defaults to time.monotonic, or uses the provided callable for deterministic testing.",
+      "test_signal": "15 / 15 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 15,
+      "failed": 0,
+      "errors": 0,
+      "total": 15,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}
