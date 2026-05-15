@@ -1,0 +1,32 @@
+{
+  "task_id": "task_005",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 17,
+  "final_total": 17,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nLRU Cache with TTL implementation.\n\nDesign notes:\n- Uses collections.OrderedDict for O(1) LRU operations (move_to_end, popitem).\n- Each cache entry stores (value, expiry_time) where expiry_time = insert_time + ttl.\n- Expiry check: entry is valid only when now < expiry_time (strict less than).\n- __len__ does NOT proactively scan; it returns the count of currently stored entries\n  (which may include some expired ones that haven't been lazily encountered yet).\n  The spec says \"after removing any expired entries lazily encountered\" \u2014 meaning\n  we don't actively purge, we just count what's stored.\n- __contains__ checks expiry but does not update LRU order.\n\"\"\"\n\nimport time\nfrom collections import OrderedDict\n\n\nclass LRUCacheWithTTL:\n    def __init__(self, capacity: int, default_ttl: float, clock=None):\n        if capacity < 1:\n            raise ValueError(f\"capacity must be >= 1, got {capacity}\")\n        if default_ttl <= 0:\n            raise ValueError(f\"default_ttl must be > 0, got {default_ttl}\")\n        self._capacity = capacity\n        self._default_ttl = default_ttl\n        self._clock = clock if clock is not None else time.monotonic\n        # OrderedDict maps key -> (value, expiry_time)\n        # Most-recently-used is at the end (move_to_end with last=True).\n        self._cache: OrderedDict = OrderedDict()\n\n    def get(self, key):\n        \"\"\"Return value if present and not expired; else None. Updates LRU order.\"\"\"\n        if key not in self._cache:\n            return None\n        value, expiry = self._cache[key]\n        now = self._clock()\n        if now >= expiry:\n            # Expired \u2014 remove and return None\n            del self._cache[key]\n            return None\n        # Valid \u2014 move to most-recently-used position\n        self._cache.move_to_end(key, last=True)\n        return value\n\n    def set(self, key, value, ttl: float | None = None):\n        \"\"\"Store value under key with optional per-entry TTL.\"\"\"\n        if ttl is None:\n            ttl = self._default_ttl\n        elif ttl <= 0:\n            raise ValueError(f\"ttl must be > 0, got {ttl}\")\n\n        now = self._clock()\n        expiry = now + ttl\n\n        if key in self._cache:\n            # Update existing entry and move to MRU\n            self._cache[key] = (value, expiry)\n            self._cache.move_to_end(key, last=True)\n        else:\n            # Evict LRU if at capacity\n            if len(self._cache) >= self._capacity:\n                # Remove least-recently-used (first item)\n                self._cache.popitem(last=False)\n            self._cache[key] = (value, expiry)\n            self._cache.move_to_end(key, last=True)\n\n    def __len__(self) -> int:\n        \"\"\"Return number of entries currently stored (lazy expiry \u2014 no proactive scan).\"\"\"\n        return len(self._cache)\n\n    def __contains__(self, key) -> bool:\n        \"\"\"Return True if key is present and not expired. Does NOT update LRU order.\"\"\"\n        if key not in self._cache:\n            return False\n        _, expiry = self._cache[key]\n        now = self._clock()\n        if now >= expiry:\n            del self._cache[key]\n            return False\n        return True\n",
+      "reasoning": "\nImplemented LRUCacheWithTTL using collections.OrderedDict for O(1) LRU operations. Key design decisions:\n- Entries stored as (value, expiry_time) tuples in an OrderedDict where the end is MRU.\n- get() checks expiry strictly (now >= expiry means expired per spec \"valid for now < t + r\"), removes expired entries, updates LRU order on success.\n- set() validates ttl > 0, evicts LRU when over capacity, updates existing entries in place with move_to_end.\n- __len__ returns raw dict length without scanning (lazy expiry per spec).\n- __contains__ checks expiry and removes expired but does NOT call move_to_end (no LRU update per spec).\n- ValueError raised for capacity < 1 and default_ttl <= 0.\n- clock defaults to time.monotonic.\n",
+      "test_signal": "17 / 17 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": null
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 17,
+      "failed": 0,
+      "errors": 0,
+      "total": 17,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

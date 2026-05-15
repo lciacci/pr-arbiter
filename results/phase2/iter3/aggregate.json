@@ -1,0 +1,1160 @@
+{
+  "schema": "phase2-iter3-v1",
+  "arms": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F"
+  ],
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "tasks": [
+    "task_001",
+    "task_002",
+    "task_003",
+    "task_004",
+    "task_005",
+    "task_006",
+    "task_007",
+    "task_008",
+    "task_009",
+    "task_010",
+    "task_011",
+    "task_012",
+    "task_013"
+  ],
+  "per_seed": {
+    "A": {
+      "1": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9898477157360406
+      },
+      "2": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9746192893401016
+      },
+      "3": {
+        "n_tasks": 13,
+        "converged": 10,
+        "pass_rate": 0.7692307692307693,
+        "test_recall": 0.9644670050761421
+      }
+    },
+    "B": {
+      "1": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9847715736040609
+      },
+      "2": {
+        "n_tasks": 13,
+        "converged": 12,
+        "pass_rate": 0.9230769230769231,
+        "test_recall": 0.9949238578680203
+      },
+      "3": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9898477157360406
+      }
+    },
+    "C": {
+      "1": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9847715736040609
+      },
+      "2": {
+        "n_tasks": 13,
+        "converged": 10,
+        "pass_rate": 0.7692307692307693,
+        "test_recall": 0.9644670050761421
+      },
+      "3": {
+        "n_tasks": 13,
+        "converged": 10,
+        "pass_rate": 0.7692307692307693,
+        "test_recall": 0.9847715736040609
+      }
+    },
+    "D": {
+      "1": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9847715736040609
+      },
+      "2": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9898477157360406
+      },
+      "3": {
+        "n_tasks": 13,
+        "converged": 12,
+        "pass_rate": 0.9230769230769231,
+        "test_recall": 0.9949238578680203
+      }
+    },
+    "E": {
+      "1": {
+        "n_tasks": 13,
+        "converged": 12,
+        "pass_rate": 0.9230769230769231,
+        "test_recall": 0.9796954314720813
+      },
+      "2": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9847715736040609
+      },
+      "3": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9746192893401016
+      }
+    },
+    "F": {
+      "1": {
+        "n_tasks": 13,
+        "converged": 10,
+        "pass_rate": 0.7692307692307693,
+        "test_recall": 0.9939759036144579
+      },
+      "2": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9847715736040609
+      },
+      "3": {
+        "n_tasks": 13,
+        "converged": 11,
+        "pass_rate": 0.8461538461538461,
+        "test_recall": 0.9898477157360406
+      }
+    }
+  },
+  "per_task_by_arm": {
+    "A": {
+      "task_001": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_002": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_003": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_004": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_005": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_006": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_007": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          false,
+          false,
+          false
+        ],
+        "n_converged": 0,
+        "stability": "stable_fail"
+      },
+      "task_008": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_009": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_010": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_011": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_012": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          false,
+          true,
+          false
+        ],
+        "n_converged": 1,
+        "stability": "flippy"
+      },
+      "task_013": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          true,
+          false,
+          false
+        ],
+        "n_converged": 1,
+        "stability": "flippy"
+      }
+    },
+    "B": {
+      "task_001": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_002": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_003": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_004": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_005": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_006": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_007": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          false,
+          true,
+          false
+        ],
+        "n_converged": 1,
+        "stability": "flippy"
+      },
+      "task_008": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_009": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_010": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_011": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_012": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          true,
+          true,
+          false
+        ],
+        "n_converged": 2,
+        "stability": "flippy"
+      },
+      "task_013": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          false,
+          false,
+          true
+        ],
+        "n_converged": 1,
+        "stability": "flippy"
+      }
+    },
+    "C": {
+      "task_001": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_002": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_003": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_004": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_005": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_006": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_007": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          false,
+          false
+        ],
+        "n_converged": 1,
+        "stability": "flippy"
+      },
+      "task_008": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_009": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_010": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_011": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_012": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          false,
+          false,
+          false
+        ],
+        "n_converged": 0,
+        "stability": "stable_fail"
+      },
+      "task_013": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          false,
+          false,
+          false
+        ],
+        "n_converged": 0,
+        "stability": "stable_fail"
+      }
+    },
+    "D": {
+      "task_001": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_002": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_003": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_004": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_005": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_006": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_007": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          false,
+          true,
+          true
+        ],
+        "n_converged": 2,
+        "stability": "flippy"
+      },
+      "task_008": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_009": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_010": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_011": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_012": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          true,
+          false,
+          true
+        ],
+        "n_converged": 2,
+        "stability": "flippy"
+      },
+      "task_013": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          false,
+          false,
+          false
+        ],
+        "n_converged": 0,
+        "stability": "stable_fail"
+      }
+    },
+    "E": {
+      "task_001": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_002": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_003": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_004": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_005": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_006": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_007": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          false,
+          false
+        ],
+        "n_converged": 1,
+        "stability": "flippy"
+      },
+      "task_008": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_009": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_010": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_011": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_012": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          true,
+          false,
+          true
+        ],
+        "n_converged": 2,
+        "stability": "flippy"
+      },
+      "task_013": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          false,
+          true,
+          false
+        ],
+        "n_converged": 1,
+        "stability": "flippy"
+      }
+    },
+    "F": {
+      "task_001": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_002": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_003": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_004": {
+        "difficulty": "easy",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_005": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_006": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_007": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          false,
+          false,
+          false
+        ],
+        "n_converged": 0,
+        "stability": "stable_fail"
+      },
+      "task_008": {
+        "difficulty": "medium",
+        "convergence_per_seed": [
+          false,
+          true,
+          true
+        ],
+        "n_converged": 2,
+        "stability": "flippy"
+      },
+      "task_009": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_010": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_011": {
+        "difficulty": "hard",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      },
+      "task_012": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          false,
+          false,
+          false
+        ],
+        "n_converged": 0,
+        "stability": "stable_fail"
+      },
+      "task_013": {
+        "difficulty": "underspec",
+        "convergence_per_seed": [
+          true,
+          true,
+          true
+        ],
+        "n_converged": 3,
+        "stability": "stable_pass"
+      }
+    }
+  },
+  "underspec_per_seed": {
+    "A": {
+      "per_seed": [
+        0.5,
+        0.5,
+        0.0
+      ],
+      "median": 0.5,
+      "task_012_per_seed": [
+        false,
+        true,
+        false
+      ],
+      "task_013_per_seed": [
+        true,
+        false,
+        false
+      ]
+    },
+    "B": {
+      "per_seed": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "median": 0.5,
+      "task_012_per_seed": [
+        true,
+        true,
+        false
+      ],
+      "task_013_per_seed": [
+        false,
+        false,
+        true
+      ]
+    },
+    "C": {
+      "per_seed": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "median": 0.0,
+      "task_012_per_seed": [
+        false,
+        false,
+        false
+      ],
+      "task_013_per_seed": [
+        false,
+        false,
+        false
+      ]
+    },
+    "D": {
+      "per_seed": [
+        0.5,
+        0.0,
+        0.5
+      ],
+      "median": 0.5,
+      "task_012_per_seed": [
+        true,
+        false,
+        true
+      ],
+      "task_013_per_seed": [
+        false,
+        false,
+        false
+      ]
+    },
+    "E": {
+      "per_seed": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "median": 0.5,
+      "task_012_per_seed": [
+        true,
+        false,
+        true
+      ],
+      "task_013_per_seed": [
+        false,
+        true,
+        false
+      ]
+    },
+    "F": {
+      "per_seed": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "median": 0.5,
+      "task_012_per_seed": [
+        false,
+        false,
+        false
+      ],
+      "task_013_per_seed": [
+        true,
+        true,
+        true
+      ]
+    }
+  },
+  "criteria": {
+    "H1_schema_neutrality": {
+      "crit1_within_noise_floor_vs_B": {
+        "d_per_seed": [
+          11,
+          11,
+          12
+        ],
+        "b_per_seed": [
+          11,
+          12,
+          11
+        ],
+        "delta_per_seed": [
+          0,
+          -1,
+          1
+        ],
+        "passed": true
+      },
+      "crit2_underspec_no_regression_vs_A": {
+        "a_median": 0.5,
+        "d_median": 0.5,
+        "passed": true
+      },
+      "overall_passed": true
+    },
+    "H2_attempt_comparison": {
+      "crit1_underspec_strict_improvement_vs_A": {
+        "a_median": 0.5,
+        "f_median": 0.5,
+        "passed": false
+      },
+      "crit2_task_007_no_regression": {
+        "f_task_007_per_seed": [
+          false,
+          false,
+          false
+        ],
+        "n_converged": 0,
+        "passed": false
+      },
+      "overall_passed": false
+    }
+  },
+  "interaction_effect": {
+    "arm_e_aggregate": 34,
+    "arm_f_aggregate": 32,
+    "delta": 2,
+    "interpretation": "iter2_prompt_rescued_by_ranking",
+    "per_task_e_vs_f": {
+      "task_007": {
+        "E": 1,
+        "F": 0
+      },
+      "task_012": {
+        "E": 2,
+        "F": 0
+      },
+      "task_013": {
+        "E": 1,
+        "F": 3
+      }
+    }
+  },
+  "adversarial_robustness": {
+    "C": {
+      "total_findings": 131,
+      "spec_violations_validated": 6,
+      "spec_interpretations": 125,
+      "findings_downgraded_total": 45,
+      "findings_with_quote_in_spec": 6,
+      "findings_with_quote_not_in_spec": 30,
+      "contamination_count": 0
+    },
+    "D": {
+      "total_findings": 120,
+      "spec_violations_validated": 19,
+      "spec_interpretations": 101,
+      "findings_downgraded_total": 32,
+      "findings_with_quote_in_spec": 20,
+      "findings_with_quote_not_in_spec": 23,
+      "contamination_count": 0
+    },
+    "E": {
+      "total_findings": 116,
+      "spec_violations_validated": 19,
+      "spec_interpretations": 97,
+      "findings_downgraded_total": 36,
+      "findings_with_quote_in_spec": 19,
+      "findings_with_quote_not_in_spec": 26,
+      "contamination_count": 0
+    },
+    "F": {
+      "total_findings": 184,
+      "spec_violations_validated": 33,
+      "spec_interpretations": 151,
+      "findings_downgraded_total": 48,
+      "findings_with_quote_in_spec": 34,
+      "findings_with_quote_not_in_spec": 25,
+      "contamination_count": 0
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "task_id": "task_001",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 13,
+  "final_total": 13,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "def parse_query_string(qs: str) -> dict[str, list[str]]:\n    \"\"\"\n    Parse a URL query string into a dict mapping each key to a list of its values.\n    \n    Handles:\n    - Multiple values per key\n    - Empty values (a=)\n    - Keys without = (treated as empty string value)\n    - Empty input string\n    - Percent-encoded characters\n    - + decoded to space (form-urlencoded)\n    - Stray & characters (leading, trailing, consecutive) are ignored\n    \"\"\"\n    if not qs:\n        return {}\n    \n    result: dict[str, list[str]] = {}\n    \n    # Split by & and filter out empty strings (handles stray &)\n    pairs = [p for p in qs.split('&') if p]\n    \n    for pair in pairs:\n        if '=' in pair:\n            key, value = pair.split('=', 1)\n        else:\n            key = pair\n            value = ''\n        \n        # Decode percent-encoding and + as space\n        key = _decode(key)\n        value = _decode(value)\n        \n        if key not in result:\n            result[key] = []\n        result[key].append(value)\n    \n    return result\n\n\ndef _decode(s: str) -> str:\n    \"\"\"Decode percent-encoded characters and + as space.\"\"\"\n    # Replace + with space first, then decode percent-encoding\n    # urllib.parse.unquote_plus does exactly this\n    from urllib.parse import unquote_plus\n    return unquote_plus(s)\n",
+      "reasoning": "The spec is clear. I implement parse_query_string by:\n1. Returning empty dict for empty input\n2. Splitting on '&' and filtering empty strings (handles stray &)\n3. Splitting each pair on '=' (first occurrence only), treating missing '=' as empty value\n4. Decoding percent-encoding and '+' as space using urllib.parse.unquote_plus (which is explicitly allowed)\n5. Collecting all values per key in order of appearance",
+      "test_signal": "13 / 13 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": null
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 13,
+      "failed": 0,
+      "errors": 0,
+      "total": 13,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

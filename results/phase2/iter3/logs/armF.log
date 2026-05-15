@@ -1,0 +1,138 @@
+=== arm F seed 1 ===
+[1/13] task_001 ...
+    OK  iters=1  13/13  (8.3s)
+[2/13] task_002 ...
+    OK  iters=1  15/15  (13.8s)
+[3/13] task_003 ...
+    OK  iters=1  14/14  (7.4s)
+[4/13] task_004 ...
+    OK  iters=1  14/14  (5.9s)
+[5/13] task_005 ...
+    OK  iters=1  17/17  (14.5s)
+[6/13] task_006 ...
+    OK  iters=1  15/15  (12.6s)
+[7/13] task_007 ...
+Python(83352) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+    FAIL  iters=3  0/0  (253.0s)
+[8/13] task_008 ...
+Python(83383) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(83444) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(83552) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+    FAIL  iters=3  0/0  (121.8s)
+[9/13] task_009 ...
+Python(83654) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(83809) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(83964) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+    OK  iters=3  16/16  (271.6s)
+[10/13] task_010 ...
+Python(84198) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+    OK  iters=1  20/20  (33.2s)
+[11/13] task_011 ...
+Python(84266) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+    OK  iters=1  14/14  (18.4s)
+[12/13] task_012 ...
+Python(84345) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(84745) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(85136) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+    FAIL  iters=3  10/11  (215.1s)
+[13/13] task_013 ...
+Python(85161) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(85342) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+    OK  iters=2  17/17  (55.6s)
+
+=== SUMMARY ===
+  arm: F_typed_ranking_only  seed: 1
+  pass rate: 10/13 (76.9%)
+  test recall: 165/166 (99.4%)
+  avg iterations: 1.69
+  crashes: 0
+  wall time: 1032.4s
+
+  by difficulty:
+    easy        4/4 pass  (test 100.0%, avg 1.0 iter)
+    medium      2/4 pass  (test 100.0%, avg 2.0 iter)
+    hard        3/3 pass  (test 100.0%, avg 1.7 iter)
+    underspec   1/2 pass  (test 96.4%, avg 2.5 iter)
+=== arm F seed 2 ===
+[1/13] task_001 ...
+    OK  iters=1  13/13  (7.0s)
+[2/13] task_002 ...
+    OK  iters=1  15/15  (12.3s)
+[3/13] task_003 ...
+    OK  iters=1  14/14  (8.3s)
+[4/13] task_004 ...
+    OK  iters=1  14/14  (5.7s)
+[5/13] task_005 ...
+    OK  iters=1  17/17  (16.8s)
+[6/13] task_006 ...
+    OK  iters=1  15/15  (12.7s)
+[7/13] task_007 ...
+    FAIL  iters=3  16/17  (221.9s)
+[8/13] task_008 ...
+    OK  iters=1  14/14  (7.3s)
+[9/13] task_009 ...
+    OK  iters=1  16/16  (17.1s)
+[10/13] task_010 ...
+    OK  iters=1  20/20  (26.5s)
+[11/13] task_011 ...
+    OK  iters=1  14/14  (13.3s)
+[12/13] task_012 ...
+    FAIL  iters=3  9/11  (250.3s)
+[13/13] task_013 ...
+    OK  iters=3  17/17  (108.3s)
+
+=== SUMMARY ===
+  arm: F_typed_ranking_only  seed: 2
+  pass rate: 11/13 (84.6%)
+  test recall: 194/197 (98.5%)
+  avg iterations: 1.46
+  crashes: 0
+  wall time: 707.6s
+
+  by difficulty:
+    easy        4/4 pass  (test 100.0%, avg 1.0 iter)
+    medium      3/4 pass  (test 98.4%, avg 1.5 iter)
+    hard        3/3 pass  (test 100.0%, avg 1.0 iter)
+    underspec   1/2 pass  (test 92.9%, avg 3.0 iter)
+=== arm F seed 3 ===
+[1/13] task_001 ...
+    OK  iters=1  13/13  (7.8s)
+[2/13] task_002 ...
+    OK  iters=1  15/15  (11.7s)
+[3/13] task_003 ...
+    OK  iters=1  14/14  (7.1s)
+[4/13] task_004 ...
+    OK  iters=1  14/14  (6.4s)
+[5/13] task_005 ...
+    OK  iters=1  17/17  (17.3s)
+[6/13] task_006 ...
+    OK  iters=1  15/15  (10.8s)
+[7/13] task_007 ...
+    FAIL  iters=3  16/17  (231.2s)
+[8/13] task_008 ...
+    OK  iters=1  14/14  (7.6s)
+[9/13] task_009 ...
+    OK  iters=1  16/16  (14.6s)
+[10/13] task_010 ...
+    OK  iters=1  20/20  (30.7s)
+[11/13] task_011 ...
+    OK  iters=1  14/14  (12.7s)
+[12/13] task_012 ...
+    FAIL  iters=3  10/11  (274.7s)
+[13/13] task_013 ...
+    OK  iters=3  17/17  (129.0s)
+
+=== SUMMARY ===
+  arm: F_typed_ranking_only  seed: 3
+  pass rate: 11/13 (84.6%)
+  test recall: 195/197 (99.0%)
+  avg iterations: 1.46
+  crashes: 0
+  wall time: 761.5s
+
+  by difficulty:
+    easy        4/4 pass  (test 100.0%, avg 1.0 iter)
+    medium      3/4 pass  (test 98.4%, avg 1.5 iter)
+    hard        3/3 pass  (test 100.0%, avg 1.0 iter)
+    underspec   1/2 pass  (test 96.4%, avg 3.0 iter)
+=== arm F done ===
