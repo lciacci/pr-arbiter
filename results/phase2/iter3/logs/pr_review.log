@@ -1,0 +1,13 @@
+PR base: main
+Total changed: 139  reviewable .py: 4
+
+[1/4] M agents/writer.py ...
+    rev=3  arb=2  merged=4
+[2/4] A eval/aggregate_iter3.py ...
+    rev=4  arb=5  merged=9
+[3/4] M eval/phase2_harness.py ...
+    rev=2  arb=3  merged=5
+[4/4] M eval/writer_loop.py ...
+    rev=1  arb=2  merged=2
+
+Wrote results/phase2/pr_review.md

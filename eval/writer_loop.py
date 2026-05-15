@@ -69,8 +69,8 @@ def run_task(
     results: list[TestResult] = []
 
     for it in range(1, budget + 1):
-        # Record the ranking block that *will be shown to* the next writer
-        # call so the per-task log preserves exactly what the writer saw.
+        # Render the ranking block once, here. Pass the same string into
+        # write() and into the Attempt log so the two cannot diverge.
         ranking_for_this_call = (
             render_pass_ranking(history)
             if (include_pass_ranking and history)
@@ -82,7 +82,7 @@ def run_task(
                 history=history,
                 task_id=task_id,
                 extra_system=writer_extra_system,
-                include_pass_ranking=include_pass_ranking,
+                pass_ranking_block=ranking_for_this_call,
             )
         except Exception as e:
             return TaskRun(
