@@ -726,3 +726,48 @@ matcher calibration are the long poles.
 - `results/phase3/<arm>/seed<N>/<pr_id>.json` — per-run data.
 - `PHASE_3_SUMMARY.md` — writeup, headline finding first regardless
   of direction.
+
+## Design recommendations: ratification
+
+Ratified 2026-05-15 as part of the Phase 3 checkpoint
+(see `docs/PHASE_3_RESUMPTION.md`). Each of the six numbered design
+questions carried an in-doc recommendation; each is accepted as
+written. Dependency notes record what each acceptance is contingent
+on — none is a pushback, all are gates already specified elsewhere
+in this doc.
+
+- [x] **1. Corpus — option (d)** (real PRs + maintainer comments +
+  spot senior annotations). Accepted as the provisional path.
+  Contingent on the Q2 decision rule in `PHASE_3_DESIGN_REVIEW.md`:
+  the senior-pilot recall number can still redirect to option (c).
+  Acceptance here is of (d)-as-default, not of (d)-unconditionally.
+- [x] **2. Coherence dimensions — convention alignment, layer
+  appropriateness, duplication** (3 dimensions). Accepted. Note:
+  duplication is the hardest of the three to ground-truth (it
+  requires the reviewer to know what already exists elsewhere); the
+  RAG-held-constant decision in question 3 is what makes it
+  measurable, so 2 and 3 stand or fall together.
+- [x] **3. Reviewer input — RAG held constant across arms.**
+  Accepted. Contingent on the mandatory retrieval ablation (a hard
+  gate in question 3): if retrieval helps one arm more than the
+  other, this decision is revisited before the full run.
+- [x] **4. Schema adaptation — `evidence_pointer` option (a3)**
+  (path-exists + LLM-judged description match) and the extended
+  `finding_type` enum. Accepted. Contingent on the matcher
+  calibration passing its pre-registered threshold — the a3 judge
+  shares that calibration, so a4 is not usable until the matcher
+  section's hard gate clears.
+- [x] **5. Ground-truth — option (d)** (F1 vs maintainer comments +
+  blinded senior rating on the residual, with canonicalization).
+  Accepted. Note: canonicalization (the prose-quality mitigation)
+  must itself be validated — a rewrite pass that distorts substance
+  invalidates the residual ratings.
+- [x] **6. Variance — single repo, ~40 PRs, 3 seeds, 2 arms.**
+  Accepted. Single-repo limits the generalization claim to
+  "coherence-issue-bearing PRs in one repo"; cross-repo
+  generalization is explicitly Phase 3.1. This is a known,
+  documented narrowing, not a pushback.
+
+No recommendation was redirected. The two prior open questions (Q1
+reframe scope, Q2 corpus path) were resolved in
+`PHASE_3_DESIGN_REVIEW.md` and are not re-litigated here.
