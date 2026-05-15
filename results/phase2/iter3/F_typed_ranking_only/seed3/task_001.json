@@ -1,0 +1,32 @@
+{
+  "task_id": "task_001",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 13,
+  "final_total": 13,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "def parse_query_string(qs: str) -> dict[str, list[str]]:\n    \"\"\"\n    Parse a URL query string into a dict mapping each key to a list of its values.\n    \n    Handles percent-encoding, + as space, multiple values per key, empty values,\n    keys without '=', and stray '&' characters.\n    \"\"\"\n    from urllib.parse import unquote_plus\n    \n    if not qs:\n        return {}\n    \n    result: dict[str, list[str]] = {}\n    \n    pairs = qs.split('&')\n    for pair in pairs:\n        if not pair:  # Skip empty strings from stray '&'\n            continue\n        if '=' in pair:\n            key, _, value = pair.partition('=')\n            key = unquote_plus(key)\n            value = unquote_plus(value)\n        else:\n            key = unquote_plus(pair)\n            value = ''\n        \n        if key not in result:\n            result[key] = []\n        result[key].append(value)\n    \n    return result\n",
+      "reasoning": "The spec asks for a query string parser that:\n1. Splits on '&' to get key-value pairs\n2. Splits each pair on '=' (first '=' only, using partition)\n3. Handles missing '=' by treating the whole pair as a key with empty string value\n4. Handles empty values (key=)\n5. Collects multiple values for the same key into a list in order\n6. Decodes percent-encoded characters\n7. Decodes '+' as space (form-urlencoded behavior)\n8. Ignores stray '&' (leading, trailing, consecutive) - these produce empty strings when splitting\n\nUsing `urllib.parse.unquote_plus` handles both percent-decoding and '+' to space conversion. The spec explicitly says urllib.parse is allowed.",
+      "test_signal": "13 / 13 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": null
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 13,
+      "failed": 0,
+      "errors": 0,
+      "total": 13,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "task_id": "task_006",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 15,
+  "final_total": 15,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 006 \u2014 Token bucket rate limiter\n\"\"\"\n\nimport time\n\n\nclass TokenBucket:\n    \"\"\"A token-bucket rate limiter.\n    \n    The bucket holds up to `capacity` tokens and refills at `refill_rate`\n    tokens per second. Starts full. Refill is lazy (computed on access).\n    \"\"\"\n\n    def __init__(self, capacity: float, refill_rate: float, clock=None):\n        if capacity <= 0:\n            raise ValueError(f\"capacity must be positive, got {capacity}\")\n        if refill_rate <= 0:\n            raise ValueError(f\"refill_rate must be positive, got {refill_rate}\")\n\n        self._capacity = float(capacity)\n        self._refill_rate = float(refill_rate)\n        self._clock = clock if clock is not None else time.monotonic\n\n        # Start full\n        self._tokens = self._capacity\n        self._last_time = self._clock()\n\n    def _refill(self):\n        \"\"\"Update token count based on elapsed time since last call.\"\"\"\n        now = self._clock()\n        elapsed = now - self._last_time\n        if elapsed > 0:\n            self._tokens = min(self._capacity, self._tokens + elapsed * self._refill_rate)\n            self._last_time = now\n\n    def try_consume(self, tokens: float = 1.0) -> bool:\n        \"\"\"Attempt to consume `tokens` from the bucket.\n        \n        Returns True and deducts tokens if available; False otherwise.\n        Raises ValueError if tokens <= 0.\n        \"\"\"\n        if tokens <= 0:\n            raise ValueError(f\"tokens must be positive, got {tokens}\")\n\n        # A request for more than capacity can never succeed\n        if tokens > self._capacity:\n            return False\n\n        self._refill()\n\n        if self._tokens >= tokens:\n            self._tokens -= tokens\n            return True\n        return False\n\n    def tokens_available(self) -> float:\n        \"\"\"Return the current token count (always refreshed from clock).\"\"\"\n        self._refill()\n        return self._tokens\n",
+      "reasoning": "The spec is clear and straightforward. I implemented a TokenBucket class that:\n1. Starts full at `capacity` tokens\n2. Raises ValueError for invalid capacity/refill_rate (<=0) and invalid tokens (<=0) in try_consume\n3. Lazily refills on each call to try_consume or tokens_available\n4. Caps tokens at capacity and never goes below 0\n5. Returns False (doesn't raise) when requested tokens > capacity\n6. Uses time.monotonic by default, or a provided clock callable\n7. All values stored as floats for fractional token support",
+      "test_signal": "15 / 15 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": [],
+      "pass_ranking_shown": null
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 15,
+      "failed": 0,
+      "errors": 0,
+      "total": 15,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}
