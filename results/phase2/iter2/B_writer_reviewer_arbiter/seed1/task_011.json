@@ -1,0 +1,31 @@
+{
+  "task_id": "task_011",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 14,
+  "final_total": 14,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 011 \u2014 Topological sort with cycle detection\n\nImplementation notes:\n- Uses Kahn's algorithm (BFS-based) with a min-heap to enforce lexicographic\n  tie-breaking among nodes with equal in-degree at any point.\n- Cycle detection: if the output doesn't include all nodes, a cycle exists.\n  We then find nodes in the cycle via DFS coloring to report them.\n- Dangling successor: validated upfront before sorting.\n\"\"\"\n\nimport heapq\nfrom collections import defaultdict\n\n\ndef topological_sort(graph: dict[str, list[str]]) -> list[str]:\n    \"\"\"Return a topological ordering of the directed graph.\n\n    Raises ValueError if a cycle is detected or if a successor is not a key.\n    \"\"\"\n    if not graph:\n        return []\n\n    # Validate: every successor must be a key in graph\n    for node, successors in graph.items():\n        for succ in successors:\n            if succ not in graph:\n                raise ValueError(\n                    f\"node '{succ}' is referenced as a successor but is not a key in the graph\"\n                )\n\n    # Kahn's algorithm with lexicographic tie-breaking via min-heap\n    in_degree: dict[str, int] = {node: 0 for node in graph}\n    for node, successors in graph.items():\n        for succ in successors:\n            in_degree[succ] += 1\n\n    # Initialize heap with all nodes that have in-degree 0\n    heap: list[str] = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    result: list[str] = []\n\n    while heap:\n        node = heapq.heappop(heap)\n        result.append(node)\n        for succ in sorted(graph[node]):  # sort for determinism (heap handles order)\n            in_degree[succ] -= 1\n            if in_degree[succ] == 0:\n                heapq.heappush(heap, succ)\n\n    if len(result) != len(graph):\n        # There is a cycle \u2014 find nodes involved\n        cycle_nodes = _find_cycle_nodes(graph)\n        raise ValueError(f\"cycle detected involving: {', '.join(sorted(cycle_nodes))}\")\n\n    return result\n\n\ndef _find_cycle_nodes(graph: dict[str, list[str]]) -> list[str]:\n    \"\"\"Return a list of nodes that are part of at least one cycle.\"\"\"\n    # 0 = unvisited, 1 = in current DFS stack, 2 = fully visited\n    color = {node: 0 for node in graph}\n    cycle_members: set[str] = set()\n\n    def dfs(node: str, stack: list[str]) -> None:\n        color[node] = 1\n        stack.append(node)\n        for succ in graph[node]:\n            if color[succ] == 1:\n                # Found a cycle \u2014 collect all nodes in the cycle\n                cycle_start = succ\n                in_cycle = False\n                for n in stack:\n                    if n == cycle_start:\n                        in_cycle = True\n                    if in_cycle:\n                        cycle_members.add(n)\n            elif color[succ] == 0:\n                dfs(succ, stack)\n        stack.pop()\n        color[node] = 2\n\n    for node in graph:\n        if color[node] == 0:\n            dfs(node, [])\n\n    return list(cycle_members)\n",
+      "reasoning": "I implemented topological_sort using Kahn's algorithm (BFS with in-degree tracking) with a min-heap to enforce lexicographic tie-breaking. Key design decisions:\n\n1. **Dangling successor validation**: Done upfront \u2014 if any successor is not a key in graph, raise ValueError with a descriptive message.\n2. **Lexicographic tie-breaking**: A min-heap (Python's heapq uses min-heap, and strings compare lexicographically) ensures that among nodes with equal in-degree, the lexicographically smallest is processed first.\n3. **Cycle detection**: After Kahn's algorithm, if not all nodes are in the result, there's a cycle. I then use DFS coloring to find which nodes are part of cycles and report them.\n4. **Self-loop**: Handled naturally \u2014 a self-loop means the node's in-degree never reaches 0 (it contributes 1 to itself), so it won't appear in the result and will be detected as a cycle.\n5. **Empty graph**: Returns [] immediately.\n6. **Error messages**: Cycle message contains \"cycle\" and lists nodes. Missing node message mentions the missing node.",
+      "test_signal": "14 / 14 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 14,
+      "failed": 0,
+      "errors": 0,
+      "total": 14,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

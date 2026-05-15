@@ -1,0 +1,31 @@
+{
+  "task_id": "task_011",
+  "mode": "writer-alone",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 14,
+  "final_total": 14,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "\"\"\"\nTask 011 \u2014 Topological sort with cycle detection.\n\nImplementation notes:\n- Uses Kahn's algorithm (BFS-based) with a min-heap to enforce lexicographic\n  ordering when multiple nodes have the same in-degree (i.e., are \"ready\").\n- Cycle detection: if after processing all reachable nodes the output list is\n  shorter than the total node count, nodes still in the graph form a cycle.\n- Dangling successors are validated upfront before any sorting.\n- Self-loops are caught as cycles (in-degree never reaches zero for that node).\n\"\"\"\n\nimport heapq\nfrom collections import defaultdict\n\n\ndef topological_sort(graph: dict[str, list[str]]) -> list[str]:\n    \"\"\"Return a topological ordering of the directed graph.\n\n    Parameters\n    ----------\n    graph:\n        Adjacency list mapping each node to its list of successors.\n\n    Returns\n    -------\n    list[str]\n        Nodes in topological order, ties broken lexicographically.\n\n    Raises\n    ------\n    ValueError\n        If the graph contains a cycle, or if a successor node is not a key\n        in *graph*.\n    \"\"\"\n    if not graph:\n        return []\n\n    # --- Validate: every successor must be a key in graph -----------------\n    for node, successors in graph.items():\n        for s in successors:\n            if s not in graph:\n                raise ValueError(\n                    f\"successor '{s}' is not a key in the graph (dangling node)\"\n                )\n\n    # --- Compute in-degrees -----------------------------------------------\n    in_degree: dict[str, int] = {node: 0 for node in graph}\n    for node, successors in graph.items():\n        for s in successors:\n            in_degree[s] += 1\n\n    # --- Kahn's algorithm with a min-heap for lex ordering ----------------\n    # Start with all nodes whose in-degree is 0\n    heap: list[str] = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    result: list[str] = []\n\n    while heap:\n        node = heapq.heappop(heap)\n        result.append(node)\n        for successor in sorted(graph[node]):  # sort for determinism\n            in_degree[successor] -= 1\n            if in_degree[successor] == 0:\n                heapq.heappush(heap, successor)\n\n    # --- Cycle detection --------------------------------------------------\n    if len(result) != len(graph):\n        # Nodes not yet added to result are part of a cycle\n        cycle_nodes = sorted(node for node, deg in in_degree.items() if deg > 0)\n        raise ValueError(\n            \"cycle detected involving: \" + \", \".join(cycle_nodes)\n        )\n\n    return result\n",
+      "reasoning": "I'm implementing a topological sort using Kahn's algorithm (BFS with in-degree tracking). Key design decisions:\n\n1. **Lexicographic ordering**: Use a min-heap so that whenever multiple nodes are ready (in-degree = 0), we process them in alphabetical order, ensuring a deterministic result.\n\n2. **Cycle detection**: After Kahn's algorithm, if the result list is shorter than the total number of nodes, the remaining nodes (those still with in-degree > 0) form cycles. I collect and report them.\n\n3. **Dangling successors**: Validated upfront \u2014 if any successor isn't a key in `graph`, raise `ValueError` with a descriptive message.\n\n4. **Self-loops**: A self-loop increments a node's own in-degree, so it never reaches 0, and is caught by the cycle detection step.\n\n5. **Empty graph**: Returns `[]` immediately.\n\nThe examples from the spec all check out with this approach.",
+      "test_signal": "14 / 14 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 14,
+      "failed": 0,
+      "errors": 0,
+      "total": 14,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}

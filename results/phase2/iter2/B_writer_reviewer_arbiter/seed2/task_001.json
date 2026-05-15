@@ -1,0 +1,31 @@
+{
+  "task_id": "task_001",
+  "mode": "writer+reviewer+arbiter",
+  "converged": true,
+  "iterations": 1,
+  "final_passed": 13,
+  "final_total": 13,
+  "final_crashed": false,
+  "error": null,
+  "history": [
+    {
+      "code": "def parse_query_string(qs: str) -> dict[str, list[str]]:\n    \"\"\"\n    Parse a URL query string into a dict mapping each key to a list of its values.\n    \n    Handles:\n    - Multiple values for the same key\n    - Empty values (e.g., \"a=\")\n    - Keys without \"=\" treated as having empty-string value\n    - Empty input produces empty dict\n    - Percent-encoded characters decoded\n    - \"+\" decoded to space (form-urlencoded behavior)\n    - Stray \"&\" characters (leading, trailing, consecutive) ignored\n    \"\"\"\n    if not qs:\n        return {}\n    \n    result: dict[str, list[str]] = {}\n    \n    # Split by \"&\" and ignore empty parts (handles stray &)\n    pairs = qs.split(\"&\")\n    \n    for pair in pairs:\n        if not pair:  # skip empty strings from stray &\n            continue\n        \n        if \"=\" in pair:\n            key, value = pair.split(\"=\", 1)\n        else:\n            key = pair\n            value = \"\"\n        \n        # Decode percent-encoding and \"+\" as space\n        # Replace \"+\" with \"%20\" equivalent by handling manually\n        # urllib.parse.unquote_plus handles both % encoding and + -> space\n        from urllib.parse import unquote_plus\n        key = unquote_plus(key)\n        value = unquote_plus(value)\n        \n        if key not in result:\n            result[key] = []\n        result[key].append(value)\n    \n    return result\n",
+      "reasoning": "The spec is clear. I'll implement parse_query_string that:\n1. Returns empty dict for empty input\n2. Splits by \"&\", ignoring empty parts (stray &)\n3. Splits each pair by \"=\" (first occurrence only)\n4. Keys without \"=\" get empty string value\n5. Uses urllib.parse.unquote_plus to handle both percent-encoding and \"+\" -> space decoding\n6. Collects multiple values for the same key into a list in order of appearance",
+      "test_signal": "13 / 13 tests passing",
+      "reviewer_feedback": [],
+      "arbiter_feedback": []
+    }
+  ],
+  "test_results": [
+    {
+      "passed": 13,
+      "failed": 0,
+      "errors": 0,
+      "total": 13,
+      "all_passed": true,
+      "crashed": false,
+      "timed_out": false,
+      "failure_summaries": []
+    }
+  ]
+}
