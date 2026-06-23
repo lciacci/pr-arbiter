@@ -7,7 +7,7 @@ agent input. This prevents accidental leakage of expected findings, persona
 info, or arbiter notes into the agents.
 
 Layout:
-- load_agent_input(pr_id) -> dict with before/after/diff. Used by runners.
+- load_agent_input(pr_id) -> dict with before/after/diff/lang. Used by runners.
 - load_rubric(pr_id) -> dict with expected_findings, etc. Used only by score().
 - run_eval(agent_callable) -> per-PR scores aggregated.
 
