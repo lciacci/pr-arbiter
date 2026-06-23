@@ -133,6 +133,7 @@ def review(agent_input: dict) -> list[dict]:
 
 
 def _format_user_message(agent_input: dict) -> str:
+    fence = agent_input.get("lang", "")  # markdown fence label; '' = plain
     return (
         "Review this pull request.\n\n"
         "# Diff\n\n"
@@ -140,11 +141,11 @@ def _format_user_message(agent_input: dict) -> str:
         f"{agent_input['diff']}\n"
         "```\n\n"
         "# Before (full file)\n\n"
-        "```python\n"
+        f"```{fence}\n"
         f"{agent_input['before']}\n"
         "```\n\n"
         "# After (full file)\n\n"
-        "```python\n"
+        f"```{fence}\n"
         f"{agent_input['after']}\n"
         "```\n\n"
         "Report findings using the report_findings tool. An empty list is the correct answer if the diff has no real issues."

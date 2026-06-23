@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from agents import lang_fence
+
 CORPUS_DIR = Path(__file__).parent.parent / "corpus"
 
 
@@ -37,11 +39,16 @@ def load_agent_input(pr_id: str) -> dict:
     expected findings.
     """
     pr_dir = CORPUS_DIR / pr_id
+    # Any single-extension before.*/after.* pair; corpus is .py today but the
+    # loader no longer hardcodes it. before.* and after.* must share an ext.
+    after = next(p for p in sorted(pr_dir.glob("after.*")) if p.suffix != ".patch")
+    before = pr_dir / f"before{after.suffix}"
     return {
         "pr_id": pr_id,
-        "before": (pr_dir / "before.py").read_text(),
-        "after": (pr_dir / "after.py").read_text(),
+        "before": before.read_text(),
+        "after": after.read_text(),
         "diff": (pr_dir / "diff.patch").read_text(),
+        "lang": lang_fence(after.name),
     }
 
 
