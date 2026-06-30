@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pr-arbiter — does a second opinion actually catch what the first missed?</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --bg-alt: #11141b;
+    --tile: #161a23;
+    --tile-hover: #1c2230;
+    --border: #262c3a;
+    --text: #e6e9f0;
+    --text-dim: #8b93a7;
+    --accent: #4fb8c9;
+    --accent-2: #d9a64e;
+    --accent-3: #e06b6b;
+    --accent-4: #6b9fd9;
+    --radius: 10px;
+    font-size: 16px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    line-height: 1.6;
+    scroll-behavior: smooth;
+  }
+
+  .mosaic-bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--bg); }
+  .mosaic-bg svg { width: 100%; height: 100%; opacity: 0.45; }
+  .mosaic-bg .tile { fill: var(--tile); stroke: var(--border); stroke-width: 1; }
+
+  a { color: var(--accent-4); }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(10px);
+    background: rgba(11,13,18,0.85);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; max-width: 980px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.02em; }
+  .brand .mark { width: 24px; height: 24px; }
+  nav ul { list-style: none; display: flex; gap: 22px; margin: 0; padding: 0; }
+  nav a.navlink { color: var(--text-dim); text-decoration: none; font-size: 0.92rem; }
+  nav a.navlink:hover { color: var(--text); }
+
+  header.hero { padding: 100px 0 70px; text-align: center; }
+  .kicker {
+    display: inline-block; font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); border: 1px solid rgba(79,184,201,0.35); background: rgba(79,184,201,0.08);
+    border-radius: 999px; padding: 5px 14px; margin-bottom: 22px;
+  }
+  h1.title {
+    font-size: clamp(2.2rem, 4.6vw, 3.3rem); margin: 0 0 18px; font-weight: 800; letter-spacing: -0.02em;
+    background: linear-gradient(120deg, var(--text) 30%, var(--accent) 70%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .tagline { font-size: 1.15rem; color: var(--text-dim); max-width: 660px; margin: 0 auto 36px; }
+  .tagline em { color: var(--text); font-style: normal; }
+
+  .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 18px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 11px 22px; border-radius: 8px;
+    font-weight: 600; font-size: 0.95rem; text-decoration: none; cursor: pointer; border: 1px solid transparent;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--accent); color: #06181a; }
+  .btn-primary:hover { background: #6fd0e0; }
+  .btn-ghost { background: transparent; border-color: var(--border); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--text-dim); }
+
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; max-width: 760px; margin: 0 auto; }
+  @media (max-width: 700px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+  .stat {
+    background: var(--tile); border: 1px solid var(--border); border-radius: 10px; padding: 16px 10px;
+  }
+  .stat .num { font-size: 1.5rem; font-weight: 800; color: var(--accent); }
+  .stat .lbl { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+  section { padding: 66px 0; border-top: 1px solid var(--border); }
+  section.no-border { border-top: none; }
+  h2.section-title { font-size: 1.85rem; margin: 0 0 8px; font-weight: 700; letter-spacing: -0.01em; }
+  p.section-sub { color: var(--text-dim); max-width: 700px; margin: 0 0 34px; font-size: 1.0rem; }
+
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 760px) { .grid-3, .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--tile); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+  }
+  .card:hover { border-color: rgba(79,184,201,0.4); transform: translateY(-2px); }
+  .card h3 { margin: 0 0 8px; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--text-dim); font-size: 0.92rem; }
+  .card .badge {
+    display: inline-block; font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; margin-bottom: 10px;
+  }
+
+  /* pipeline diagram */
+  .pipeline { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+  .pipe-stage {
+    flex: 1; min-width: 200px; background: var(--tile); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px; position: relative;
+  }
+  .pipe-stage h4 { margin: 0 0 6px; color: var(--accent); font-size: 0.95rem; }
+  .pipe-stage p { margin: 0; color: var(--text-dim); font-size: 0.84rem; }
+  .pipe-arrow { display: flex; align-items: center; justify-content: center; padding: 0 10px; color: var(--text-dim); font-size: 1.3rem; }
+  @media (max-width: 760px) { .pipeline { flex-direction: column; } .pipe-arrow { transform: rotate(90deg); padding: 6px 0; } }
+
+  /* tabs */
+  .tabs { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+  .tab-btn {
+    background: var(--tile); border: 1px solid var(--border); color: var(--text-dim); padding: 9px 16px;
+    border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 600;
+  }
+  .tab-btn.active { color: #06181a; background: var(--accent); border-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; animation: fadein 0.25s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* tables */
+  table.data {
+    width: 100%; border-collapse: collapse; background: var(--tile); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; font-size: 0.86rem;
+  }
+  table.data th, table.data td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--border); }
+  table.data th:first-child, table.data td:first-child { text-align: left; color: var(--text); }
+  table.data th { color: var(--text-dim); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr.highlight td { color: var(--accent); font-weight: 700; }
+  table.data tr.highlight td:first-child { color: var(--accent); }
+
+  .table-toggle { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 0.85rem; color: var(--text-dim); }
+  .switch {
+    position: relative; width: 44px; height: 24px; flex: 0 0 auto;
+    background: var(--bg-alt); border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 1px; left: 1px; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--text-dim); transition: transform 0.2s ease, background 0.2s ease;
+  }
+  .switch.on { background: rgba(217,166,78,0.18); border-color: var(--accent-2); }
+  .switch.on::after { transform: translateX(20px); background: var(--accent-2); }
+
+  /* accordion */
+  .accordion-item { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; background: var(--tile); }
+  .accordion-head { display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer; user-select: none; }
+  .accordion-head:hover { background: var(--tile-hover); }
+  .accordion-num {
+    flex: 0 0 auto; width: 30px; height: 28px; border-radius: 6px; background: rgba(79,184,201,0.12);
+    color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 700;
+  }
+  .accordion-title { flex: 1; font-weight: 600; font-size: 0.92rem; }
+  .accordion-sub { color: var(--text-dim); font-size: 0.78rem; margin-top: 2px; }
+  .accordion-chevron { color: var(--text-dim); transition: transform 0.2s ease; }
+  .accordion-item.open .accordion-chevron { transform: rotate(180deg); }
+  .accordion-body {
+    max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;
+    color: var(--text-dim); font-size: 0.88rem; padding: 0 18px;
+  }
+  .accordion-item.open .accordion-body { max-height: 200px; padding: 0 18px 16px 62px; }
+
+  /* worked example timeline */
+  .we-step { display: flex; gap: 16px; margin-bottom: 18px; }
+  .we-marker {
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; font-weight: 700; color: var(--bg);
+  }
+  .we-marker.empty { background: var(--text-dim); }
+  .we-marker.found { background: var(--accent-2); }
+  .we-marker.blocked { background: var(--accent-3); }
+  .we-body strong { color: var(--text); display: block; margin-bottom: 3px; }
+  .we-body p { margin: 0; color: var(--text-dim); font-size: 0.88rem; }
+
+  /* comparison cards (task_007 / task_013) */
+  .compare-card { background: var(--tile); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; }
+  .compare-card.win { border-color: rgba(94,201,168,0.45); }
+  .compare-card.loss { border-color: rgba(224,107,107,0.45); }
+  .compare-card .tag {
+    display: inline-block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 2px 9px; border-radius: 999px; margin-bottom: 10px;
+  }
+  .compare-card.win .tag { background: rgba(94,201,168,0.15); color: #5ec9a8; }
+  .compare-card.loss .tag { background: rgba(224,107,107,0.15); color: var(--accent-3); }
+  .compare-card h3 { margin: 0 0 10px; }
+  .compare-card .traj { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.82rem; color: var(--text-dim); margin: 10px 0; }
+  .compare-card p { color: var(--text-dim); font-size: 0.88rem; }
+
+  /* findings list */
+  .findings-list { display: flex; flex-direction: column; gap: 10px; }
+  .finding {
+    display: flex; gap: 14px; align-items: flex-start; background: var(--tile); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 18px;
+  }
+  .finding .icon { font-size: 1.1rem; flex: 0 0 auto; margin-top: 1px; }
+  .finding .body strong { color: var(--text); }
+  .finding .body { color: var(--text-dim); font-size: 0.9rem; }
+
+  footer { padding: 50px 0 70px; text-align: center; color: var(--text-dim); font-size: 0.85rem; }
+  footer .mark-row { margin-bottom: 14px; opacity: 0.6; }
+  footer .reading-guide { max-width: 640px; margin: 0 auto 26px; text-align: left; font-size: 0.82rem; }
+  footer .reading-guide a { display: block; padding: 4px 0; }
+
+  .quote { font-style: italic; color: var(--text-dim); border-left: 2px solid var(--accent); padding-left: 16px; margin: 0 0 38px; }
+  code.inline {
+    background: var(--bg-alt); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85em; color: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<div class="mosaic-bg" id="mosaicBg"></div>
+
+<nav>
+  <div class="wrap">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 24 24">
+        <circle cx="9" cy="12" r="8" fill="#4fb8c9" opacity="0.85"/>
+        <circle cx="15" cy="12" r="8" fill="#d9a64e" opacity="0.85"/>
+      </svg>
+      pr-arbiter
+    </div>
+    <ul>
+      <li><a class="navlink" href="#architecture">Architecture</a></li>
+      <li><a class="navlink" href="#numbers">Numbers</a></li>
+      <li><a class="navlink" href="#journey">Iteration journey</a></li>
+      <li><a class="navlink" href="#worked">Worked examples</a></li>
+      <li><a class="navlink" href="#honesty">Where it loses</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">Multi-agent dynamics POC — Phase 1 + Phase 2</span>
+    <h1 class="title">Does a second opinion<br>actually catch what the first missed?</h1>
+    <p class="tagline">pr-arbiter measures whether a <em>reviewer + independent arbiter</em> architecture beats a single-agent baseline — on code review (Phase 1) and on code generation (Phase 2). Same question, two surfaces, eval-first the whole way.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#worked">See the load-bearing catch</a>
+      <a class="btn btn-ghost" href="#honesty">Read where it loses</a>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><div class="num">7/8</div><div class="lbl">criticals caught, multi-agent</div></div>
+      <div class="stat"><div class="num">6/8</div><div class="lbl">criticals caught, best single-agent</div></div>
+      <div class="stat"><div class="num">11/13</div><div class="lbl">Phase 2 tasks passed, both arms</div></div>
+      <div class="stat"><div class="num">1</div><div class="lbl">corpus mislabel the agent itself found</div></div>
+    </div>
+  </div>
+</header>
+
+<section class="no-border" id="what">
+  <div class="wrap">
+    <h2 class="section-title">What this actually tests</h2>
+    <p class="section-sub">Not "can an LLM review code" — that's settled. The question is narrower and more useful: does adding a second, independent agent produce real signal a single well-tuned prompt can't reach, or is it just more API spend for the same ceiling?</p>
+    <div class="grid-3">
+      <div class="card">
+        <span class="badge">Phase 1</span>
+        <h3>Code review</h3>
+        <p>Reviewer + independent arbiter + mutual triage on 20 planted-bug PRs from real Flask source. Catches a critical XSS bug every single-agent configuration misses.</p>
+      </div>
+      <div class="card">
+        <span class="badge">Phase 2</span>
+        <h3>Code generation</h3>
+        <p>Same architecture ported to a writer-loop — writer drafts, reviewer + arbiter critique, writer revises. Ties on aggregate, but the tie hides a real swap: a correctness win traded for an ambiguity loss.</p>
+      </div>
+      <div class="card">
+        <span class="badge">Discipline</span>
+        <h3>Eval-first, always</h3>
+        <p>Every architectural change re-run against the full corpus before being called a win. The ablation (single-agent baseline) runs alongside every multi-agent configuration, every time — without it, the multi-agent number means nothing.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="wrap">
+    <h2 class="section-title">Architecture</h2>
+    <p class="section-sub">Three agents for review, a tighter loop for generation. Independence is the design property being tested in both.</p>
+    <div class="tabs" id="archTabs">
+      <button class="tab-btn active" data-tab="phase1">Phase 1 — review pipeline</button>
+      <button class="tab-btn" data-tab="phase2">Phase 2 — writer loop</button>
+    </div>
+    <div class="tab-panel active" data-panel="phase1">
+      <div class="pipeline">
+        <div class="pipe-stage">
+          <h4>1. Reviewer</h4>
+          <p>Adversarial single-pass review of the diff. Tuned to surface issues, not to triage them.</p>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-stage">
+          <h4>2. Arbiter</h4>
+          <p>Independent second-pass review. Sees the reviewer's findings only as anti-redundancy context — surfaces what the reviewer missed, especially correctness-critical and architectural issues.</p>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-stage">
+          <h4>3. Triage</h4>
+          <p>Two voices (reviewer-style, arbiter-style) independently vote KEEP / DROP / UNSURE on the merged list. Both KEEP → blocking. Both DROP → drop. Mixed → advisory.</p>
+        </div>
+      </div>
+      <p style="color:var(--text-dim); font-size:0.88rem; margin-top:18px;">Input: a PR diff. Output: a two-tier triaged review — blocking findings and advisory findings — the disposition senior reviewers actually use.</p>
+    </div>
+    <div class="tab-panel" data-panel="phase2">
+      <div class="pipeline">
+        <div class="pipe-stage">
+          <h4>Writer</h4>
+          <p>Drafts code from spec only — never sees the tests, never sees failure tracebacks. Only signal: a binary pass count (e.g. "5 / 17 passing").</p>
+        </div>
+        <div class="pipe-arrow">⇄</div>
+        <div class="pipe-stage">
+          <h4>Reviewer</h4>
+          <p>Sees the full attempt history. Catches regression and oscillation across iterations.</p>
+        </div>
+        <div class="pipe-arrow">+</div>
+        <div class="pipe-stage">
+          <h4>Arbiter</h4>
+          <p>Sees only the latest attempt — independent second pass, anti-anchoring property carried over from Phase 1.</p>
+        </div>
+      </div>
+      <p style="color:var(--text-dim); font-size:0.88rem; margin-top:18px;">Loop repeats until tests pass or a 3-iteration budget is hit. Writer-alone (binary signal only, no critique) is the ablation arm run alongside every multi-agent run.</p>
+    </div>
+  </div>
+</section>
+
+<section id="numbers">
+  <div class="wrap">
+    <h2 class="section-title">Headline numbers</h2>
+    <p class="section-sub">All Phase 1 scores on the same 20-PR corpus. Critical recall reported separately — missing a critical is qualitatively worse than missing a low, and a single weighted score would hide that.</p>
+
+    <div class="table-toggle">
+      <div class="switch" id="rubricSwitch" onclick="toggleRubric()"></div>
+      <span id="rubricLabel">As-scored rubric — pr_007 counted as a false positive</span>
+    </div>
+
+    <table class="data" id="phase1Table"></table>
+
+    <p style="color:var(--text-dim); font-size:0.82rem; margin-top:10px;">The corrected view credits a real bug (<code class="inline">_parse_env_bool</code> docstring/implementation mismatch) the reviewer found on a PR the rubric had labeled a clean negative control. The corpus file itself is unchanged — both views are honest, they answer different questions. See <a href="#honesty">where it loses</a>.</p>
+
+    <h3 style="margin-top:46px; font-size:1.15rem;">Phase 2 — writer-loop, by difficulty</h3>
+    <table class="data" style="margin-top:14px;">
+      <thead><tr><th>Difficulty</th><th>n</th><th>Writer-alone</th><th>Multi-agent</th></tr></thead>
+      <tbody>
+        <tr><td>Easy</td><td>4</td><td>4/4</td><td>4/4</td></tr>
+        <tr class="highlight"><td>Medium</td><td>4</td><td>3/4</td><td>4/4 — fixed task_007</td></tr>
+        <tr><td>Hard</td><td>3</td><td>3/3</td><td>3/3</td></tr>
+        <tr class="highlight"><td>Underspec</td><td>2</td><td>1/2</td><td>0/2 — broke task_013</td></tr>
+      </tbody>
+    </table>
+    <p style="color:var(--text-dim); font-size:0.86rem; margin-top:14px;">Aggregate ties at 11/13 for both arms — but it's a swap, not a wash. Multi-agent gains a medium-difficulty correctness win and loses an underspec task to critic over-confidence. Same direction as Phase 1: <strong style="color:var(--text)">helps with correctness, hurts on ambiguity.</strong></p>
+  </div>
+</section>
+
+<section id="journey">
+  <div class="wrap">
+    <h2 class="section-title">The iteration journey</h2>
+    <p class="section-sub">Four architectural iterations, not prompt tweaks. Each one tested a specific hypothesis about how the second agent should relate to the first.</p>
+    <div id="journeyList"></div>
+  </div>
+</section>
+
+<section id="worked">
+  <div class="wrap">
+    <h2 class="section-title">Worked example — the load-bearing catch</h2>
+    <p class="section-sub"><code class="inline">pr_009</code> introduces a regex-based HTML sanitizer labeled as XSS prevention. It looks reasonable on a quick read. Regex-based HTML sanitization is a long-known anti-pattern — and the single-agent reviewer missed it across <em>every</em> configuration and <em>every</em> prompt variant tried.</p>
+
+    <div class="we-step">
+      <div class="we-marker empty">1</div>
+      <div class="we-body"><strong>Single-agent reviewer — empty review</strong><p>Strong on classic vuln shapes (path traversal, SQLi, credential exposure). "This whole approach is wrong" requires recognizing the bug isn't in a line, it's in the strategy — a different kind of reasoning one prompt pass doesn't reach.</p></div>
+    </div>
+    <div class="we-step">
+      <div class="we-marker found">2</div>
+      <div class="we-body"><strong>Independent arbiter — 5 findings, 3 critical</strong><p>Framed to look for what the first reviewer missed, especially architectural issues. Caught the non-recursive script-tag removal, the quote-style mismatch on event handlers, and the entirely-unhandled vectors (iframe, object, img onerror) — by treating it as "this approach is wrong," not a per-line bug hunt.</p></div>
+    </div>
+    <div class="we-step">
+      <div class="we-marker blocked">3</div>
+      <div class="we-body"><strong>Mutual triage — all 3 criticals promoted to blocking</strong><p>Both triage voices independently voted KEEP on all three critical findings. The single-source risk (only one agent flagged it) didn't tank confidence — both voices reached the same conclusion reading the same diff.</p></div>
+    </div>
+
+    <p class="quote">"The miss isn't a prompt problem; it's a single-pass-on-one-model ceiling. The independent arbiter, with a different framing focused on gaps and architectural issues, reaches a class of reasoning the reviewer doesn't."</p>
+
+    <h3 style="font-size:1.15rem; margin-bottom:20px;">Phase 2 — the same tradeoff, restated for generation</h3>
+    <div class="grid-2">
+      <div class="compare-card win">
+        <span class="tag">Multi-agent win</span>
+        <h3>task_007 — JSON path resolver</h3>
+        <div class="traj">writer-alone:&nbsp; 15 → 16 → 16 (stuck)<br>multi-agent:&nbsp;&nbsp; timeout → 17/17</div>
+        <p>Reviewer + arbiter produced 10 specific findings — bracket parser, mutable sentinel default, dot-handling edge cases, swallowed exceptions. The binary pass-count signal told the writer it was wrong; the critique told it <em>where to look</em>.</p>
+      </div>
+      <div class="compare-card loss">
+        <span class="tag">Multi-agent loss</span>
+        <h3>task_013 — whitespace normalizer (underspec)</h3>
+        <div class="traj">writer-alone:&nbsp; 16 → 12 → 17 (recovered)<br>multi-agent:&nbsp;&nbsp; 11 → 16 → 13 (diverged)</div>
+        <p>Spec is genuinely ambiguous on newline-adjacent whitespace. The arbiter asserted a confident interpretation; the writer trusted it and over-corrected, breaking previously passing cases. <strong style="color:var(--text)">Critic confidence in the face of spec ambiguity pushes the writer the wrong way.</strong></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="honesty">
+  <div class="wrap">
+    <h2 class="section-title">Where it loses</h2>
+    <p class="section-sub">The eval-first discipline means the negative results are as documented as the wins — including the time the system found a bug in its own ground truth.</p>
+    <div class="findings-list" id="findingsList"></div>
+  </div>
+</section>
+
+<section id="ground-rules">
+  <div class="wrap">
+    <h2 class="section-title">Ground rules, preserved from kickoff</h2>
+    <div class="grid-2">
+      <div class="card"><h3>1. Eval-first</h3><p>Iterate against the corpus every change. No prompt tuning without re-running the eval.</p></div>
+      <div class="card"><h3>2. Run the ablation</h3><p>Always score the single-agent baseline alongside the multi-agent run. If the arbiter isn't adding signal, the architecture is wrong — not the prompt.</p></div>
+      <div class="card"><h3>3. Don't expand the corpus to fit the agent</h3><p>If the agent fails on a bug class, fix the agent — don't make the bugs more obvious. When the agent catches something the rubric mislabeled, document the discovery; don't silently rewrite the corpus.</p></div>
+      <div class="card"><h3>4. Bailout</h3><p>If iteration becomes vibes-only — the eval stops discriminating between prompt variants — switch to mutation testing, where the eval is automatic.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="mark-row">
+    <svg width="22" height="22" viewBox="0 0 24 24">
+      <circle cx="9" cy="12" r="8" fill="#4fb8c9" opacity="0.85"/>
+      <circle cx="15" cy="12" r="8" fill="#d9a64e" opacity="0.85"/>
+    </svg>
+  </div>
+  <div class="reading-guide">
+    <a href="../README.md">README.md — repo overview, status, running it</a>
+    <a href="../SUMMARY.md">SUMMARY.md — Phase 1 full writeup</a>
+    <a href="../PHASE_2_SUMMARY.md">PHASE_2_SUMMARY.md — Phase 2 full writeup</a>
+    <a href="../results/pr_009_worked_example.md">results/pr_009_worked_example.md — the critical catch, step by step</a>
+    <a href="../results/iter4_corpus_discovery.md">results/iter4_corpus_discovery.md — the pr_007 mislabel investigation</a>
+  </div>
+  pr-arbiter — a stepping-stone POC. Phase 2 closed the writer loop; next is whether this generalizes to spec → architecture → implementation.
+</footer>
+
+<script>
+  (function buildMosaic() {
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    const cols = 14, rows = 9, size = 90;
+    svg.setAttribute("viewBox", "0 0 " + (cols*size) + " " + (rows*size));
+    svg.setAttribute("preserveAspectRatio", "xMidYMid slice");
+    const colors = ["#161a23","#161a23","#161a23","#161a23","#1a2730","#241f17","#1b222e"];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const rect = document.createElementNS(svgNS, "rect");
+        rect.setAttribute("x", c*size + 1);
+        rect.setAttribute("y", r*size + 1);
+        rect.setAttribute("width", size - 2);
+        rect.setAttribute("height", size - 2);
+        rect.setAttribute("rx", 6);
+        rect.classList.add("tile");
+        rect.style.fill = colors[Math.floor(Math.random()*colors.length)];
+        svg.appendChild(rect);
+      }
+    }
+    document.getElementById("mosaicBg").appendChild(svg);
+  })();
+
+  document.querySelectorAll("#archTabs .tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#archTabs .tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll("#architecture .tab-panel").forEach(p => p.classList.remove("active"));
+      btn.classList.add("active");
+      document.querySelector('#architecture .tab-panel[data-panel="' + btn.dataset.tab + '"]').classList.add("active");
+    });
+  });
+
+  // ---------- Phase 1 headline table, toggleable rubric ----------
+  const ROWS_ASSCORED = [
+    ["v1 reviewer-alone (baseline)", "50.9%", "48.3%", "30", "6/8 (75%)", "1/3", false],
+    ["v1 reviewer + v1 arbiter (filter)", "47.3%", "52.0%", "24", "6/8 (75%)", "1/3", false],
+    ["v2 reviewer-alone", "52.7%", "60.4%", "19", "6/8 (75%)", "1/3", false],
+    ["v2 reviewer + v2 strict arbiter", "38.2%", "70.0%", "9", "4/8 (50%)", "1/3", false],
+    ["iter2: v2 reviewer + indep arbiter (merge)", "61.8%", "49.3%", "35", "7/8 (88%)", "2/3", false],
+    ["iter3 final (merged, mutual-triage kept)", "56.4%", "51.7%", "29", "7/8 (88%)", "1/3", false],
+    ["iter3 blocking (high-conf only)", "43.6%", "58.5%", "17", "7/8 (88%)", "1/3", true],
+  ];
+  const ROWS_CORRECTED = [
+    ["v1 reviewer-alone", "51.8%", "50.0%", "29", "6/8", "0/2", false],
+    ["v1 reviewer + v1 arbiter (filter)", "48.2%", "54.0%", "23", "6/8", "0/2", false],
+    ["v2 reviewer-alone", "51.8%", "60.4%", "19", "6/8", "0/2", false],
+    ["v2 reviewer + v2 strict arbiter", "37.5%", "70.0%", "9", "4/8", "0/2", false],
+    ["iter2: v2 reviewer + indep arbiter", "62.5%", "50.7%", "34", "7/8", "1/2", false],
+    ["iter3 final (merged kept)", "57.1%", "53.3%", "28", "7/8", "0/2", false],
+    ["iter3 blocking (high-conf only)", "42.9%", "58.5%", "17", "7/8", "0/2", true],
+  ];
+  function renderPhase1Table(rows) {
+    const t = document.getElementById("phase1Table");
+    t.innerHTML = `
+      <thead><tr><th>Configuration</th><th>Recall</th><th>Precision</th><th>FP</th><th>Critical recall</th><th>Neg-ctrl</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr class="${r[6] ? 'highlight' : ''}"><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td><td>${r[5]}</td></tr>`).join("")}
+      </tbody>
+    `;
+  }
+  renderPhase1Table(ROWS_ASSCORED);
+  let correctedOn = false;
+  function toggleRubric() {
+    correctedOn = !correctedOn;
+    document.getElementById("rubricSwitch").classList.toggle("on", correctedOn);
+    document.getElementById("rubricLabel").textContent = correctedOn
+      ? "Corrected rubric — pr_007's real bug credited (in-memory rescore)"
+      : "As-scored rubric — pr_007 counted as a false positive";
+    renderPhase1Table(correctedOn ? ROWS_CORRECTED : ROWS_ASSCORED);
+  }
+
+  // ---------- iteration journey accordion ----------
+  const JOURNEY = [
+    ["iter0", "Reviewer (adversarial single-pass) + arbiter as triage filter", "Does filter-style arbitration improve reviewer output?"],
+    ["iter1", "Reviewer with severity anchoring + strict-default-drop arbiter", "Does aggressive arbitration help? Does severity calibration matter?"],
+    ["iter2", "Reviewer unchanged + arbiter as independent second reviewer (can ADD findings)", "Does the second agent surface things the first misses? — Yes: catches pr_009."],
+    ["iter3", "iter2 + mutual triage (two voices vote KEEP/DROP/UNSURE on merged findings)", "Does adversarial assessment between existing voices produce a useful blocking/advisory split?"],
+    ["iter4", "Not a prompt iteration — a corpus discovery", "The reviewer's persistent pr_007 \"false positive\" turned out to be a real bug the rubric mislabeled."],
+  ];
+  const jl = document.getElementById("journeyList");
+  JOURNEY.forEach((j, i) => {
+    const item = document.createElement("div");
+    item.className = "accordion-item";
+    item.innerHTML = `
+      <div class="accordion-head" onclick="this.parentElement.classList.toggle('open')">
+        <div class="accordion-num">${j[0]}</div>
+        <div class="accordion-title">${j[1]}<div class="accordion-sub">${j[2].split(' — ')[0]}</div></div>
+        <div class="accordion-chevron">&#9662;</div>
+      </div>
+      <div class="accordion-body"><p>${j[2]}</p></div>
+    `;
+    jl.appendChild(item);
+  });
+
+  // ---------- where-it-loses findings ----------
+  const FINDINGS = [
+    ["\u{1F50E}", "Two criticals remain uncaught across every configuration", "pr_015 F1 (missing JSON validation on request.get_json()) and pr_017 F1 (config field set but not persisted). Both require holding state across the diff in mind — “what happens when this returns None,” “is this actually persisted” — which the agents don't do reliably. A genuine reasoning ceiling, not a prompt gap."],
+    ["\u{2696}️", "Mutual triage has an asymmetric bias — the arbiter does the triage work", "10 reviewer-keep / arbiter-drop disagreements, zero in the reverse direction. The arbiter voice acts as the skeptic; the reviewer voice acts as a backstop. Real findings end up in advisory because of this asymmetry. Symmetric-skeptic voices (security vs correctness) would likely rebalance it — untested."],
+    ["\u{1F4DD}", "The system found a bug in its own ground truth", "pr_007 was labeled a negative control. The reviewer flagged it as a false positive on every run. Investigating after iter3 revealed a real foot-gun: _parse_env_bool's docstring doesn't match its implementation, setting up future callers for a silent inversion bug. The rubric author checked \"does this preserve runtime behavior\" but missed \"does this introduce a maintenance trap.\" The corpus was not relabeled — the mislabel's cost is honest and the discovery is itself evidence the eval-first discipline works."],
+    ["\u{1F501}", "Phase 2 has no mutual-triage analog yet", "Phase 1's fix for over-rotation (two voices voting KEEP/DROP) doesn't map cleanly onto a continuous writer-feedback stream. The task_013 loss has no equivalent fix shipped — three candidate directions are scoped (underspec-aware prompting, variance run, mutual-triage analog) but the decision is pending."],
+  ];
+  const fl = document.getElementById("findingsList");
+  FINDINGS.forEach(f => {
+    const el = document.createElement("div");
+    el.className = "finding";
+    el.innerHTML = `<span class="icon">${f[0]}</span><div class="body"><strong>${f[1]}</strong><br>${f[2]}</div>`;
+    fl.appendChild(el);
+  });
+</script>
+
+</body>
+</html>
