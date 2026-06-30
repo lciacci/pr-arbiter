@@ -35,6 +35,7 @@ one-page visual overview of both phases.
 ## Quick links
 
 - [docs/index.html](docs/index.html) — visual one-pager covering both phases (open in a browser).
+- [docs/promo/index.html](docs/promo/index.html) — interactive promo page: architecture tabs, iteration journey, worked examples (open in a browser).
 
 **Phase 2 (most recent):**
 - [PHASE_2_SUMMARY.md](PHASE_2_SUMMARY.md) — Phase 2 writeup, design choices, results, worked examples.
