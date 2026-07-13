@@ -90,9 +90,8 @@ Output: a two-tier triaged review (blocking findings + advisory findings).
 Reviewer and arbiter are language-agnostic: the prompt derives its
 code-fence label from the file extension (`agents.lang_fence`), so
 non-Python diffs review fine even though the corpus itself is Python.
-`run_on_poc.py` and `eval/review_pr.py` are two small dogfooding
-scripts that run this pipeline outside the corpus — the former against
-an external repo, the latter against this repo's own PR diffs.
+`eval/review_pr.py` is a small dogfooding script that runs this
+pipeline outside the corpus, against this repo's own PR diffs.
 
 This is a stepping-stone POC. Phase 2 closed the writer loop; Phase 3
 (design complete, currently paused — see Quick links above) is the
@@ -135,7 +134,6 @@ eval/
   writer_loop.py         # Phase 2: per-task loop driver
   phase2_harness.py      # Phase 2: corpus runner + summarize
   aggregate_iter2.py, aggregate_iter3.py  # Phase 2 iter2/iter3: 3-seed variance aggregators
-run_on_poc.py            # dogfood: run reviewer+arbiter against an external repo
 migrations/              # one-off corpus rubric migrations (e.g. severity-tier promotion)
 docs/
   index.html             # earlier static one-pager (Phase 1 + Phase 2 iter1 only; not deployed)
