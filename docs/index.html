@@ -174,17 +174,19 @@
 </div>
 
 <div class="headline" style="border-left-color: #c47a00;">
-  <div class="headline-number" style="color: #c47a00;">same pattern, different surface</div>
-  <div class="headline-label">phase 2 — code generation from spec (writer-loop)</div>
+  <div class="headline-number" style="color: #c47a00;">same direction, smaller effect</div>
+  <div class="headline-label">phase 2 — code generation from spec (writer-loop), 3-seed variance result</div>
   <p style="margin-top: .8rem; margin-bottom: 0;">
     Phase 2 ports the reviewer + arbiter architecture from PR review to a
     writer-loop: a writer agent produces code, reviewer + arbiter critique,
-    writer revises. Across 13 tasks (197 tests), both arms converge at the
-    same rate (<strong>11/13</strong>), but the failure mix shifts:
-    multi-agent <strong>fixes</strong> a stuck correctness bug
-    (<span class="mono">task_007</span>) and <strong>regresses</strong> on
-    an underspec ambiguity (<span class="mono">task_013</span>). Same
-    tradeoff as Phase 1: helps with correctness, hurts on ambiguity.
+    writer revises. The single-seed iter1 pilot reported an 11/13 tie with a
+    clean narrative swap (multi-agent fixing <span class="mono">task_007</span>,
+    regressing <span class="mono">task_013</span>) — re-running both arms
+    across 3 seeds (39 runs) showed that specific narrative was a single-seed
+    artifact. The aggregate direction holds — multi-agent
+    <strong>34/39</strong> vs writer-alone <strong>32/39</strong> — at roughly
+    half the effect size the pilot suggested. See
+    <span class="mono">PHASE_2_FINAL.md</span> for the full analysis.
   </p>
 </div>
 
@@ -372,7 +374,7 @@
   <li>Same model (Sonnet 4.6) for all agents — the ablation argument is preserved.</li>
 </ul>
 
-<h3>Results — both arms tie on aggregate</h3>
+<h3>Results — iter1 single-seed pilot (superseded, see below)</h3>
 
 <table>
   <thead>
@@ -385,27 +387,40 @@
 </table>
 
 <p style="font-size: .85rem; color: #666;">
-  Same convergence rate; multi-agent costs ~1.5× wall and ~3× API calls. The
-  aggregate tie is real, but hides a shift in the <em>failure mix</em>.
+  Single seed. Same convergence rate; multi-agent costs ~1.5× wall and ~3×
+  API calls. The apparent tie and the task-level swap described below did
+  not hold up once the same arms were re-run across 3 seeds — see
+  <span class="mono">PHASE_2_FINAL.md</span>.
 </p>
 
-<h3>By difficulty — swap, not a wash</h3>
+<h3>3-seed variance result (39 runs) — the corrected picture</h3>
 
 <table>
   <thead>
-    <tr><th>difficulty</th><th>n</th><th>writer-alone</th><th>multi-agent</th><th>delta</th></tr>
+    <tr><th>arm</th><th>seed 1</th><th>seed 2</th><th>seed 3</th><th>total</th></tr>
   </thead>
   <tbody>
-    <tr><td>easy</td><td class="num">4</td><td class="num">4/4</td><td class="num">4/4</td><td class="num">—</td></tr>
-    <tr class="highlight"><td>medium</td><td class="num">4</td><td class="num">3/4</td><td class="num winner">4/4</td><td class="num winner">+1 (task_007 fixed)</td></tr>
-    <tr><td>hard</td><td class="num">3</td><td class="num">3/3</td><td class="num">3/3</td><td class="num">—</td></tr>
-    <tr class="highlight"><td>underspec</td><td class="num">2</td><td class="num">1/2</td><td class="num" style="color:#a33">0/2</td><td class="num" style="color:#a33">−1 (task_013 broken)</td></tr>
+    <tr><td>writer-alone (A)</td><td class="num">11</td><td class="num">11</td><td class="num">10</td><td class="num">32/39</td></tr>
+    <tr class="highlight"><td>writer + reviewer + arbiter (B)</td><td class="num">11</td><td class="num">12</td><td class="num">11</td><td class="num winner">34/39</td></tr>
   </tbody>
 </table>
 
-<h3>Worked examples — where the signal lives</h3>
+<p style="font-size: .85rem; color: #666;">
+  Multi-agent still wins (+2 tasks / 39 runs, ~6%) — same direction as Phase
+  1 — but at roughly half the margin the single-seed table above implied.
+  The task-level "swap" (medium-difficulty win, underspec loss) did not
+  reproduce: both <span class="mono">task_007</span> and
+  <span class="mono">task_013</span> flip outcome by seed, for both arms.
+</p>
 
-<h4 style="color: #2a5cdb; margin-top: 1rem;">task_007 — multi-agent WIN</h4>
+<h3>Worked examples — seed 1 of the iter1 pilot</h3>
+<p style="font-size: .85rem; color: #666; margin-top: -.5rem;">
+  Accurate reads of that one run. Re-running the same two tasks across 3
+  seeds showed neither outcome was stable — see the corrected picture in
+  "What this means" below.
+</p>
+
+<h4 style="color: #2a5cdb; margin-top: 1rem;">task_007 — multi-agent WIN (seed 1)</h4>
 <p style="margin-top: .3rem;">
   JSON path resolver (medium). Writer's first attempt had multiple
   correctness bugs: bracket parsing, mutable sentinel default,
@@ -420,7 +435,7 @@
   multi-agent provides the diagnostic detail the binary signal can't.
 </p>
 
-<h4 style="color: #a33; margin-top: 1rem;">task_013 — multi-agent LOSS</h4>
+<h4 style="color: #a33; margin-top: 1rem;">task_013 — multi-agent LOSS (seed 1)</h4>
 <p style="margin-top: .3rem;">
   Whitespace normalizer (underspec). Spec is ambiguous on whether spaces
   adjacent to newlines should be stripped or preserved.
@@ -438,21 +453,23 @@
 <h3>What this means</h3>
 
 <p>
-  Two phases, two corpora, two surfaces (review vs write), <strong>same
-  architectural finding</strong>:
+  Two phases, two corpora, two surfaces (review vs write), <strong>the
+  aggregate direction replicates, the task-level narrative doesn't</strong>:
 </p>
 <ul>
-  <li>Independent multi-agent review <strong>beats</strong> single-agent on correctness bugs the latter can't catch alone.</li>
-  <li>Independent multi-agent review <strong>loses</strong> to single-agent on ambiguity where the critic introduces false certainty.</li>
-  <li>The tradeoff is <strong>real, not a Phase 1 artifact.</strong></li>
+  <li>Independent multi-agent review <strong>beats</strong> single-agent in aggregate (34/39 vs 32/39 across 3 seeds) — same direction as Phase 1.</li>
+  <li>The specific iter1 story — multi-agent wins on correctness (<span class="mono">task_007</span>), loses on ambiguity (<span class="mono">task_013</span>) — was a single-seed read. Both tasks flip outcome by seed for both arms; there is no stable per-task winner.</li>
+  <li>The effect size that generalizes is smaller than iter1 suggested: roughly half, once seed variance is accounted for.</li>
 </ul>
 
 <p>
-  Phase 2 has <strong>no mutual-triage analog yet</strong>. The Phase 1 fix
-  for overshoot (two voices voting KEEP/DROP) doesn't map cleanly — feedback
-  flows to the writer as a stream, not a discrete list. Whether some analog
-  (e.g. critic confidence tagging, dual-voice gating of spec-interpretation
-  feedback) closes the underspec gap is the load-bearing question for iter 2.
+  Phase 2 iter2 ruled out a mutual-triage analog as the fix — the typed
+  finding schema (spec-violation vs spec-interpretation, validator-checked)
+  showed the critic side is already well-calibrated (0 contamination across
+  551 findings). The dominant variable on underspec turned out to be the
+  <strong>writer's own exploration strategy</strong>, not the critic
+  architecture — see <span class="mono">PHASE_2_FINAL.md</span> for the
+  full iter2/iter3 analysis and why it motivates Phase 3.
 </p>
 
 <h2>Methodology notes</h2>
@@ -466,12 +483,15 @@
 <h2>Further reading</h2>
 <div class="links">
   <p><strong>Phase 2</strong></p>
-  <p><a href="../PHASE_2_SUMMARY.md">PHASE_2_SUMMARY.md</a> — full Phase 2 writeup</p>
-  <p><a href="../results/phase2/iter1_notes.md">results/phase2/iter1_notes.md</a> — iter 1 deep dive, full trajectories on the task_007 win and task_013 loss</p>
+  <p><a href="../PHASE_2_FINAL.md">PHASE_2_FINAL.md</a> — canonical Phase 2 writeup: 3-seed variance result, typed-finding schema, Phase 3 motivation</p>
+  <p><a href="../PHASE_2_SUMMARY.md">PHASE_2_SUMMARY.md</a> — iter1 narrative (superseded by PHASE_2_FINAL.md; read alongside it)</p>
+  <p><a href="../results/phase2/iter1_notes.md">results/phase2/iter1_notes.md</a> — iter 1 deep dive, full trajectories on the task_007 and task_013 seed-1 runs</p>
   <p><a href="../phase2_corpus/README.md">phase2_corpus/README.md</a> — task selection and corpus structure</p>
   <p><a href="../docs/PHASE_2_HANDOFF.md">PHASE_2_HANDOFF.md</a> — original design doc (what we agreed before building)</p>
   <p><a href="../results/phase2/writer-alone_summary.json">writer-alone_summary.json</a> — ablation arm aggregates</p>
   <p><a href="../results/phase2/writer_reviewer_arbiter_summary.json">writer_reviewer_arbiter_summary.json</a> — multi-agent arm aggregates</p>
+  <p style="margin-top:1rem;"><strong>Phase 3</strong></p>
+  <p><a href="../docs/PHASE_3_RESUMPTION.md">PHASE_3_RESUMPTION.md</a> — design ratified, paused pending a senior-annotator pilot (exact status + next action)</p>
   <p style="margin-top:1rem;"><strong>Phase 1</strong></p>
   <p><a href="../SUMMARY.md">SUMMARY.md</a> — full Phase 1 writeup (~1500 words)</p>
   <p><a href="../README.md">README.md</a> — repo overview, how to run</p>

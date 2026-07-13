@@ -16,33 +16,55 @@ false positives, two-tier output (blocking + advisory).
 | **multi-agent blocking-tier (iter3)**      |  43.6% | **58.5%** | **17** | **7/8 (88%)** | **1/3**  |
 
 **Phase 2 headline:** the same architecture, ported to a writer-loop
-(writer + reviewer + arbiter on code-from-spec), ties on aggregate
-(11/13 each) but swaps a medium-difficulty win for an underspec loss.
-Multi-agent fixes a stuck correctness bug on `task_007`; multi-agent
-arbiter pushes the writer in the wrong direction on `task_013`.
-**Same tradeoff as Phase 1: helps with correctness, hurts on
-ambiguity.** Architectural finding holds across both surfaces.
+(writer + reviewer + arbiter on code-from-spec), directionally
+replicates the Phase 1 effect but far more weakly once tested for
+variance. The iter1 run (single seed) reported an 11/13 vs 11/13 tie
+with a clean narrative swap — multi-agent fixing `task_007` and
+breaking `task_013`. **iter2/iter3 re-ran both arms across 3 seeds
+and that narrative didn't hold**: under variance, multi-agent beats
+writer-alone by 2 tasks across 39 runs, and both `task_007` and
+`task_013` flip outcome depending on seed with no stable winner.
 
-| mode (Phase 2)              | pass rate | test recall | avg iter | wall |
-|-----------------------------|----------:|------------:|---------:|-----:|
-| writer-alone (ablation)     | 11/13 (84.6%) | 193/197 (98.0%) | 1.46 | 413s |
-| writer + reviewer + arbiter | 11/13 (84.6%) | 192/197 (97.5%) | 1.46 | 615s |
+| mode (Phase 2, 3-seed variance) | pass rate (39 runs) |
+|----------------------------------|---------------------:|
+| writer-alone (arm A)             | 32/39 (82.1%) |
+| writer + reviewer + arbiter (arm B) | 34/39 (87.2%) |
 
-See [SUMMARY.md](SUMMARY.md) and [PHASE_2_SUMMARY.md](PHASE_2_SUMMARY.md)
-for the full writeups, or [docs/index.html](docs/index.html) for a
-one-page visual overview of both phases.
+**Same direction as Phase 1 — multi-agent still wins — but the
+margin is roughly half what the single-seed iter1 report suggested.**
+The load-bearing Phase 2 finding is bounding that effect size under
+proper variance, not confirming the architecture works. See
+[PHASE_2_FINAL.md](PHASE_2_FINAL.md) for the full analysis, including
+a reusable typed-finding schema (0 contaminated findings across 551
+checked) and why underspec convergence looks information-bounded
+rather than architecture-bounded — the motivation for the (currently
+paused) Phase 3 design.
+
+See [SUMMARY.md](SUMMARY.md) and [PHASE_2_FINAL.md](PHASE_2_FINAL.md)
+for the full writeups, or [docs/promo/index.html](docs/promo/index.html)
+(live at [houseofyeti.com/pr-arbiter](https://houseofyeti.com/pr-arbiter))
+for an interactive overview of both phases.
 
 ## Quick links
 
-- [docs/index.html](docs/index.html) — visual one-pager covering both phases (open in a browser).
-- [docs/promo/index.html](docs/promo/index.html) — interactive promo page: architecture tabs, iteration journey, worked examples (open in a browser).
+- [docs/promo/index.html](docs/promo/index.html) — interactive promo page: architecture tabs, iteration journey, worked examples. Live at [houseofyeti.com/pr-arbiter](https://houseofyeti.com/pr-arbiter).
+- [docs/index.html](docs/index.html) — earlier static one-pager (Phase 1 + Phase 2 iter1 numbers only, not updated with the iter2/iter3 variance result above). Kept for reference, not deployed.
 
 **Phase 2 (most recent):**
-- [PHASE_2_SUMMARY.md](PHASE_2_SUMMARY.md) — Phase 2 writeup, design choices, results, worked examples.
-- [results/phase2/iter1_notes.md](results/phase2/iter1_notes.md) — iter 1 deep dive, full trajectories for `task_007` (win) and `task_013` (loss).
-- [docs/PHASE_2_ITER2_HANDOFF.md](docs/PHASE_2_ITER2_HANDOFF.md) — iter 2 implementation brief (three-arm variance + finding-type schema). Drop into a fresh session to kick off.
+- [PHASE_2_FINAL.md](PHASE_2_FINAL.md) — canonical Phase 2 writeup: 3-iteration, 3-seed variance result, typed-finding schema, and the Phase 3 motivation.
+- [PHASE_2_SUMMARY.md](PHASE_2_SUMMARY.md), [PHASE_2_ITER2_SUMMARY.md](PHASE_2_ITER2_SUMMARY.md), [PHASE_2_ITER3_SUMMARY.md](PHASE_2_ITER3_SUMMARY.md) — per-iteration writeups, preserved for reproducibility (iter1's single-seed narrative is superseded by PHASE_2_FINAL.md; read alongside it).
+- [results/phase2/iter1_notes.md](results/phase2/iter1_notes.md) — iter 1 deep dive, full trajectories for `task_007` and `task_013` (the effects later shown to be single-seed, not stable).
 - [phase2_corpus/README.md](phase2_corpus/README.md) — corpus structure and task selection rationale.
 - [docs/PHASE_2_HANDOFF.md](docs/PHASE_2_HANDOFF.md) — original Phase 2 design doc.
+
+**Phase 3 (design complete, paused):** a coherence-dimension review
+architecture (real PRs + maintainer comments, not planted bugs) is
+designed and ratified but not implemented — it's blocked on an 8-15
+hour senior-annotator pilot. See
+[docs/PHASE_3_RESUMPTION.md](docs/PHASE_3_RESUMPTION.md) for exact
+status and next action, [docs/PHASE_3_DESIGN.md](docs/PHASE_3_DESIGN.md)
+for the design, and [results/phase3/corpus_pilot.md](results/phase3/corpus_pilot.md)
+for the corpus-viability probe.
 
 **Phase 1:**
 - [SUMMARY.md](SUMMARY.md) — project writeup, all iterations, methodology.
@@ -65,8 +87,16 @@ Three agents, in order:
 Input: a PR diff (before/after pair).
 Output: a two-tier triaged review (blocking findings + advisory findings).
 
-This is a stepping-stone POC. Phase 2 will close the writer loop or pivot
-to spec → architecture → implementation using the patterns learned here.
+Reviewer and arbiter are language-agnostic: the prompt derives its
+code-fence label from the file extension (`agents.lang_fence`), so
+non-Python diffs review fine even though the corpus itself is Python.
+`run_on_poc.py` and `eval/review_pr.py` are two small dogfooding
+scripts that run this pipeline outside the corpus — the former against
+an external repo, the latter against this repo's own PR diffs.
+
+This is a stepping-stone POC. Phase 2 closed the writer loop; Phase 3
+(design complete, currently paused — see Quick links above) is the
+next step toward spec → architecture → implementation.
 
 ## Why agents, not just a prompt
 
@@ -84,12 +114,15 @@ is documented in `results/*_notes.md`.
 
 ```
 agents/
-  reviewer.py            # Phase 1 PR reviewer
-  arbiter.py             # Phase 1 independent arbiter
-  triage.py              # Phase 1 mutual-triage voices
-  writer.py              # Phase 2 writer agent
-  writer_reviewer.py     # Phase 2 reviewer (code-attempt vs spec)
-  writer_arbiter.py      # Phase 2 arbiter (latest-attempt independent pass)
+  __init__.py              # lang_fence: extension -> code-fence label (multi-language support)
+  reviewer.py               # Phase 1 PR reviewer
+  arbiter.py                # Phase 1 independent arbiter
+  triage.py                 # Phase 1 mutual-triage voices
+  writer.py                 # Phase 2 writer agent
+  writer_reviewer.py        # Phase 2 reviewer (code-attempt vs spec)
+  writer_arbiter.py         # Phase 2 arbiter (latest-attempt independent pass)
+  writer_reviewer_typed.py  # Phase 2 iter2+: typed finding schema (spec-violation vs spec-interpretation)
+  writer_arbiter_typed.py   # Phase 2 iter2+: typed-schema arbiter
 corpus/                  # 20 PRs with rubrics + Flask 3.0.0 source (Phase 1)
 phase2_corpus/           # 13 tasks with deterministic tests (Phase 2)
 eval/
@@ -97,21 +130,30 @@ eval/
   run_baseline.py        # Phase 1: reviewer-only or reviewer+arbiter pipeline
   run_triage.py          # Phase 1: iter3 mutual-triage runner
   show_results.py        # Phase 1: side-by-side dashboard
+  review_pr.py           # dogfood: run reviewer+arbiter on this repo's own PR diff
   sandbox.py             # Phase 2: tmpdir + pytest subprocess + pass-count parse
   writer_loop.py         # Phase 2: per-task loop driver
   phase2_harness.py      # Phase 2: corpus runner + summarize
+  aggregate_iter2.py, aggregate_iter3.py  # Phase 2 iter2/iter3: 3-seed variance aggregators
+run_on_poc.py            # dogfood: run reviewer+arbiter against an external repo
+migrations/              # one-off corpus rubric migrations (e.g. severity-tier promotion)
 docs/
-  index.html             # visual one-page summary (both phases)
+  index.html             # earlier static one-pager (Phase 1 + Phase 2 iter1 only; not deployed)
+  promo/index.html       # interactive promo page — deployed at houseofyeti.com/pr-arbiter
   PERSONAS.md            # Phase 1 corpus authoring reference (NEVER read by agents)
-  PHASE_2_HANDOFF.md     # Phase 2 design doc
+  PHASE_2_HANDOFF.md, PHASE_2_ITER2_HANDOFF.md  # Phase 2 design docs
+  PHASE_3_DESIGN.md, PHASE_3_DESIGN_REVIEW.md, PHASE_3_RESUMPTION.md  # Phase 3 design + status
+  IMPROVEMENTS.md        # backlog notes (SQL-review false-positive/noise-floor fixes)
 results/
   baseline_notes.md ... iter4_corpus_discovery.md  # Phase 1 iterations
   pr_009_worked_example.md                          # Phase 1 critical catch
   phase2/
-    writer-alone/                                   # Phase 2 per-task JSON (ablation)
-    writer_reviewer_arbiter/                        # Phase 2 per-task JSON (multi-agent)
-    *_summary.json                                  # Phase 2 aggregates
-    iter1_notes.md                                  # Phase 2 iter 1 deep dive
+    writer-alone/, writer_reviewer_arbiter/          # Phase 2 iter1 per-task JSON
+    iter2/, iter3/                                    # Phase 2 iter2/iter3: 3-seed × arm JSON + aggregates
+    *_summary.json                                    # Phase 2 iter1 aggregates
+    iter1_notes.md                                    # Phase 2 iter 1 deep dive
+  phase3/
+    corpus_pilot.md                                   # Phase 3 corpus-viability probe (no code)
 ```
 
 ## Running it
@@ -187,18 +229,33 @@ before/after pair with rubric-defined expected findings.
 Personas are authoring tools. **Agents never see persona info.** See
 `docs/PERSONAS.md`.
 
+The corpus is synthetic: every PR is a deliberately planted-bug
+before/after pair, not a real Flask history. That includes planted
+fake secrets — e.g. `corpus/pr_001` hardcodes a fabricated
+`sk_live_...`-style token as a "hardcoded credential" test case. It is
+not a real key and does not correspond to any live account; it exists
+so the reviewer/arbiter can be scored on whether they catch it.
+
 ## Status
 
 **Phase 1 (PR review):** complete. 4 iterations + corpus discovery.
 Five candidate polish moves listed in `results/iter3_notes.md`; none
 are architectural.
 
-**Phase 2 (writer-loop):** iter 1 complete. Corpus (13 tasks, 197
-tests), sandbox, writer + reviewer + arbiter agents, ablation arm
-all built and run. Headline finding: Phase 1 architectural tradeoff
-generalizes to code generation. Three candidate iter 2 directions
-listed in `results/phase2/iter1_notes.md` (confidence tagging in
-reviewer tool schema, variance run, mutual-triage analog).
+**Phase 2 (writer-loop):** complete. 3 iterations across 2 months —
+iter1 (single-seed baseline), iter2 (3-seed variance + typed-finding
+schema), iter3 (2×2 factorial on writer-prompt/ranking variants).
+Canonical result in `PHASE_2_FINAL.md`: the Phase 1 architectural
+effect replicates directionally but at roughly half the magnitude
+the single-seed iter1 run suggested, and the specific iter1 narrative
+(`task_007` win / `task_013` loss) didn't hold up under variance.
+Motivates Phase 3.
+
+**Phase 3 (coherence-dimension review):** design complete and
+ratified, implementation paused. Blocked on an 8-15 hour
+senior-annotator pilot (see `docs/PHASE_3_RESUMPTION.md` for exact
+status and next action). No corpus has been built and no code has
+been written for this phase yet.
 
 ## Ground rules (preserved from kickoff)
 

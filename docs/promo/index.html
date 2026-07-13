@@ -226,13 +226,13 @@
 
 <nav>
   <div class="wrap">
-    <div class="brand">
+    <a class="brand" href="https://github.com/lciacci/pr-arbiter" style="text-decoration:none; color:inherit;">
       <svg class="mark" viewBox="0 0 24 24">
         <circle cx="9" cy="12" r="8" fill="#4fb8c9" opacity="0.85"/>
         <circle cx="15" cy="12" r="8" fill="#d9a64e" opacity="0.85"/>
       </svg>
       pr-arbiter
-    </div>
+    </a>
     <ul>
       <li><a class="navlink" href="#architecture">Architecture</a></li>
       <li><a class="navlink" href="#numbers">Numbers</a></li>
@@ -255,7 +255,7 @@
     <div class="stat-row">
       <div class="stat"><div class="num">7/8</div><div class="lbl">criticals caught, multi-agent</div></div>
       <div class="stat"><div class="num">6/8</div><div class="lbl">criticals caught, best single-agent</div></div>
-      <div class="stat"><div class="num">11/13</div><div class="lbl">Phase 2 tasks passed, both arms</div></div>
+      <div class="stat"><div class="num">34/39</div><div class="lbl">Phase 2 multi-agent pass rate, 3-seed (vs 32/39 solo)</div></div>
       <div class="stat"><div class="num">1</div><div class="lbl">corpus mislabel the agent itself found</div></div>
     </div>
   </div>
@@ -274,7 +274,7 @@
       <div class="card">
         <span class="badge">Phase 2</span>
         <h3>Code generation</h3>
-        <p>Same architecture ported to a writer-loop — writer drafts, reviewer + arbiter critique, writer revises. Ties on aggregate, but the tie hides a real swap: a correctness win traded for an ambiguity loss.</p>
+        <p>Same architecture ported to a writer-loop — writer drafts, reviewer + arbiter critique, writer revises. Under 3-seed variance testing, multi-agent beats solo by 2 tasks across 39 runs — same direction as Phase 1, roughly half the effect size a single-seed pilot suggested.</p>
       </div>
       <div class="card">
         <span class="badge">Discipline</span>
@@ -348,17 +348,15 @@
 
     <p style="color:var(--text-dim); font-size:0.82rem; margin-top:10px;">The corrected view credits a real bug (<code class="inline">_parse_env_bool</code> docstring/implementation mismatch) the reviewer found on a PR the rubric had labeled a clean negative control. The corpus file itself is unchanged — both views are honest, they answer different questions. See <a href="#honesty">where it loses</a>.</p>
 
-    <h3 style="margin-top:46px; font-size:1.15rem;">Phase 2 — writer-loop, by difficulty</h3>
+    <h3 style="margin-top:46px; font-size:1.15rem;">Phase 2 — 3-seed variance result (13 tasks × 3 seeds = 39 runs)</h3>
     <table class="data" style="margin-top:14px;">
-      <thead><tr><th>Difficulty</th><th>n</th><th>Writer-alone</th><th>Multi-agent</th></tr></thead>
+      <thead><tr><th>Arm</th><th>Seed 1</th><th>Seed 2</th><th>Seed 3</th><th>Total</th></tr></thead>
       <tbody>
-        <tr><td>Easy</td><td>4</td><td>4/4</td><td>4/4</td></tr>
-        <tr class="highlight"><td>Medium</td><td>4</td><td>3/4</td><td>4/4 — fixed task_007</td></tr>
-        <tr><td>Hard</td><td>3</td><td>3/3</td><td>3/3</td></tr>
-        <tr class="highlight"><td>Underspec</td><td>2</td><td>1/2</td><td>0/2 — broke task_013</td></tr>
+        <tr><td>Writer-alone (A)</td><td>11</td><td>11</td><td>10</td><td>32/39</td></tr>
+        <tr class="highlight"><td>Writer + reviewer + arbiter (B)</td><td>11</td><td>12</td><td>11</td><td>34/39</td></tr>
       </tbody>
     </table>
-    <p style="color:var(--text-dim); font-size:0.86rem; margin-top:14px;">Aggregate ties at 11/13 for both arms — but it's a swap, not a wash. Multi-agent gains a medium-difficulty correctness win and loses an underspec task to critic over-confidence. Same direction as Phase 1: <strong style="color:var(--text)">helps with correctness, hurts on ambiguity.</strong></p>
+    <p style="color:var(--text-dim); font-size:0.86rem; margin-top:14px;">The iter1 pilot (seed 1 only) reported an 11/13 tie with a clean narrative — multi-agent fixed a medium-difficulty task (<code class="inline">task_007</code>) and broke an underspec one (<code class="inline">task_013</code>). Re-running both arms across 3 seeds showed that specific narrative didn't hold: both tasks flip outcome depending on seed, for both arms. The <strong style="color:var(--text)">aggregate</strong> direction still holds — multi-agent +2/39 — just at roughly half the effect size the single-seed pilot suggested. Full analysis in <a href="../PHASE_2_FINAL.md">PHASE_2_FINAL.md</a>.</p>
   </div>
 </section>
 
@@ -390,21 +388,22 @@
 
     <p class="quote">"The miss isn't a prompt problem; it's a single-pass-on-one-model ceiling. The independent arbiter, with a different framing focused on gaps and architectural issues, reaches a class of reasoning the reviewer doesn't."</p>
 
-    <h3 style="font-size:1.15rem; margin-bottom:20px;">Phase 2 — the same tradeoff, restated for generation</h3>
+    <h3 style="font-size:1.15rem; margin-bottom:20px;">Phase 2 — seed 1's reading (later shown to be one seed, not a stable effect)</h3>
     <div class="grid-2">
       <div class="compare-card win">
-        <span class="tag">Multi-agent win</span>
+        <span class="tag">Seed 1 — multi-agent win</span>
         <h3>task_007 — JSON path resolver</h3>
         <div class="traj">writer-alone:&nbsp; 15 → 16 → 16 (stuck)<br>multi-agent:&nbsp;&nbsp; timeout → 17/17</div>
         <p>Reviewer + arbiter produced 10 specific findings — bracket parser, mutable sentinel default, dot-handling edge cases, swallowed exceptions. The binary pass-count signal told the writer it was wrong; the critique told it <em>where to look</em>.</p>
       </div>
       <div class="compare-card loss">
-        <span class="tag">Multi-agent loss</span>
+        <span class="tag">Seed 1 — multi-agent loss</span>
         <h3>task_013 — whitespace normalizer (underspec)</h3>
         <div class="traj">writer-alone:&nbsp; 16 → 12 → 17 (recovered)<br>multi-agent:&nbsp;&nbsp; 11 → 16 → 13 (diverged)</div>
-        <p>Spec is genuinely ambiguous on newline-adjacent whitespace. The arbiter asserted a confident interpretation; the writer trusted it and over-corrected, breaking previously passing cases. <strong style="color:var(--text)">Critic confidence in the face of spec ambiguity pushes the writer the wrong way.</strong></p>
+        <p>Spec is genuinely ambiguous on newline-adjacent whitespace. The arbiter asserted a confident interpretation; the writer trusted it and over-corrected, breaking previously passing cases. <strong style="color:var(--text)">Critic confidence in the face of spec ambiguity pushes the writer the wrong way</strong> — in this run.</p>
       </div>
     </div>
+    <p style="color:var(--text-dim); font-size:0.86rem; margin-top:16px;">Both trajectories are from the iter1 single-seed pilot and are accurate reads of that run. They are not stable effects: re-running the same two tasks across 3 seeds (iter2/iter3) showed each converges or fails depending on seed, for both arms. See the <a href="#numbers">3-seed numbers above</a> and <a href="../PHASE_2_FINAL.md">PHASE_2_FINAL.md</a> for the corrected picture.</p>
   </div>
 </section>
 
@@ -438,11 +437,12 @@
   <div class="reading-guide">
     <a href="../README.md">README.md — repo overview, status, running it</a>
     <a href="../SUMMARY.md">SUMMARY.md — Phase 1 full writeup</a>
-    <a href="../PHASE_2_SUMMARY.md">PHASE_2_SUMMARY.md — Phase 2 full writeup</a>
+    <a href="../PHASE_2_FINAL.md">PHASE_2_FINAL.md — canonical Phase 2 writeup (3-seed variance result)</a>
     <a href="../results/pr_009_worked_example.md">results/pr_009_worked_example.md — the critical catch, step by step</a>
     <a href="../results/iter4_corpus_discovery.md">results/iter4_corpus_discovery.md — the pr_007 mislabel investigation</a>
+    <a href="https://github.com/lciacci/pr-arbiter">github.com/lciacci/pr-arbiter — source</a>
   </div>
-  pr-arbiter — a stepping-stone POC. Phase 2 closed the writer loop; next is whether this generalizes to spec → architecture → implementation.
+  pr-arbiter — a stepping-stone POC. Phase 2 closed the writer loop and bounded the multi-agent effect under 3-seed variance; Phase 3 (coherence-dimension review, generalizing beyond planted-bug corpora) is designed and ratified but paused pending a senior-annotator pilot.
 </footer>
 
 <script>
