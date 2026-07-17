@@ -45,6 +45,17 @@ for the full writeups, or [docs/promo/index.html](docs/promo/index.html)
 (live at [houseofyeti.com/pr-arbiter](https://houseofyeti.com/pr-arbiter))
 for an interactive overview of both phases.
 
+## Cohesion
+
+pr-arbiter is the **pattern** layer in the Conclave / Tessera / pr-arbiter
+cohesion contract — the multi-role union-recall review workflow (Conclave =
+substrate, Tessera = policy). Its lane, the anti-conflation guards
+(union-recall ≠ select-best; ROLE diversity ≠ MODEL diversity; the numbers are
+thin), and its seam contributions live in **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.
+Canonical contract: `../tessera/docs/contracts/three-project-cohesion.md`
+(Tessera-hosted; if it and the stub disagree, canonical wins). Full integration
+(→ Tessera's `/arbiter` on Conclave's fleet) is ADR-gated — nothing to wire today.
+
 ## Quick links
 
 - [docs/promo/index.html](docs/promo/index.html) — interactive promo page: architecture tabs, iteration journey, worked examples. Live at [houseofyeti.com/pr-arbiter](https://houseofyeti.com/pr-arbiter).
