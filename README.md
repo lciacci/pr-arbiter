@@ -1,8 +1,20 @@
 # pr-arbiter
 
+> **Status: complete and frozen.** This repo is a finished research
+> artifact, kept as the record. The work continued as a tool —
+> [`arbiter`](https://github.com/lciacci/arbiter) — which takes the
+> reviewer + arbiter + triage pattern proven here and turns it into
+> something usable on real diffs. Nothing further will be implemented
+> in this repo. See [Status](#status) for what closed and what didn't.
+
 Multi-agent dynamics for code review (Phase 1) and code generation
 (Phase 2). A POC measuring whether reviewer + independent arbiter
 architecture beats a single-agent baseline on two different surfaces.
+
+All results are model-conditional: **Sonnet 4.6** (`claude-sonnet-4-6`)
+for every agent, in every run. The model is pinned in `agents/*.py` and
+deliberately left there — the numbers below were produced with it, and
+changing it would invalidate them.
 
 **Phase 1 headline:** the multi-agent system (reviewer + independent
 arbiter + mutual triage) catches a critical security bug (regex-based
@@ -37,8 +49,8 @@ proper variance, not confirming the architecture works. See
 [PHASE_2_FINAL.md](PHASE_2_FINAL.md) for the full analysis, including
 a reusable typed-finding schema (0 contaminated findings across 551
 checked) and why underspec convergence looks information-bounded
-rather than architecture-bounded — the motivation for the (currently
-paused) Phase 3 design.
+rather than architecture-bounded — the motivation for the Phase 3
+design that was ratified but never built.
 
 See [SUMMARY.md](SUMMARY.md) and [PHASE_2_FINAL.md](PHASE_2_FINAL.md)
 for the full writeups, or [docs/promo/index.html](docs/promo/index.html)
@@ -59,7 +71,6 @@ Canonical contract: `../tessera/docs/contracts/three-project-cohesion.md`
 ## Quick links
 
 - [docs/promo/index.html](docs/promo/index.html) — interactive promo page: architecture tabs, iteration journey, worked examples. Live at [houseofyeti.com/pr-arbiter](https://houseofyeti.com/pr-arbiter).
-- [docs/index.html](docs/index.html) — earlier static one-pager (Phase 1 + Phase 2 iter1 numbers only, not updated with the iter2/iter3 variance result above). Kept for reference, not deployed.
 
 **Phase 2 (most recent):**
 - [PHASE_2_FINAL.md](PHASE_2_FINAL.md) — canonical Phase 2 writeup: 3-iteration, 3-seed variance result, typed-finding schema, and the Phase 3 motivation.
@@ -68,13 +79,15 @@ Canonical contract: `../tessera/docs/contracts/three-project-cohesion.md`
 - [phase2_corpus/README.md](phase2_corpus/README.md) — corpus structure and task selection rationale.
 - [docs/PHASE_2_HANDOFF.md](docs/PHASE_2_HANDOFF.md) — original Phase 2 design doc.
 
-**Phase 3 (design complete, paused):** a coherence-dimension review
-architecture (real PRs + maintainer comments, not planted bugs) is
-designed and ratified but not implemented — it's blocked on an 8-15
-hour senior-annotator pilot. See
-[docs/PHASE_3_RESUMPTION.md](docs/PHASE_3_RESUMPTION.md) for exact
-status and next action, [docs/PHASE_3_DESIGN.md](docs/PHASE_3_DESIGN.md)
-for the design, and [results/phase3/corpus_pilot.md](results/phase3/corpus_pilot.md)
+**Phase 3 (designed, ratified, never implemented):** a
+coherence-dimension review architecture (real PRs + maintainer
+comments, not planted bugs). The design is complete and the decision
+rules are pre-registered, but no corpus was built and no code written.
+The project moved from research to tooling instead; the design stands
+as a record of where the research pointed. See
+[docs/PHASE_3_DESIGN.md](docs/PHASE_3_DESIGN.md) for the design,
+[docs/PHASE_3_RESUMPTION.md](docs/PHASE_3_RESUMPTION.md) for the state
+it was left in, and [results/phase3/corpus_pilot.md](results/phase3/corpus_pilot.md)
 for the corpus-viability probe.
 
 **Phase 1:**
@@ -104,9 +117,9 @@ non-Python diffs review fine even though the corpus itself is Python.
 `eval/review_pr.py` is a small dogfooding script that runs this
 pipeline outside the corpus, against this repo's own PR diffs.
 
-This is a stepping-stone POC. Phase 2 closed the writer loop; Phase 3
-(design complete, currently paused — see Quick links above) is the
-next step toward spec → architecture → implementation.
+This was a stepping-stone POC. Phase 2 closed the writer loop; Phase 3
+was designed but never built. The pattern itself graduated into
+[`arbiter`](https://github.com/lciacci/arbiter).
 
 ## Why agents, not just a prompt
 
@@ -147,7 +160,6 @@ eval/
   aggregate_iter2.py, aggregate_iter3.py  # Phase 2 iter2/iter3: 3-seed variance aggregators
 migrations/              # one-off corpus rubric migrations (e.g. severity-tier promotion)
 docs/
-  index.html             # earlier static one-pager (Phase 1 + Phase 2 iter1 only; not deployed)
   promo/index.html       # interactive promo page — deployed at houseofyeti.com/pr-arbiter
   PERSONAS.md            # Phase 1 corpus authoring reference (NEVER read by agents)
   PHASE_2_HANDOFF.md, PHASE_2_ITER2_HANDOFF.md  # Phase 2 design docs
@@ -260,11 +272,20 @@ the single-seed iter1 run suggested, and the specific iter1 narrative
 (`task_007` win / `task_013` loss) didn't hold up under variance.
 Motivates Phase 3.
 
-**Phase 3 (coherence-dimension review):** design complete and
-ratified, implementation paused. Blocked on an 8-15 hour
-senior-annotator pilot (see `docs/PHASE_3_RESUMPTION.md` for exact
-status and next action). No corpus has been built and no code has
-been written for this phase yet.
+**Phase 3 (coherence-dimension review):** designed and ratified,
+never implemented. It was gated on an 8-15 hour senior-annotator
+pilot; that pilot was never run, and the project moved to tooling
+instead. No corpus was built and no code was written for this phase.
+The design and its pre-registered decision rules stand as a record of
+where the research pointed — see `docs/PHASE_3_RESUMPTION.md`.
+
+A review of the Phase 3 design raised a methodological point worth
+recording: the pilot would have had a single unblinded rater — the
+project lead — who was also the hypothesis author, dimension
+designer, and match adjudicator. The design already forbade
+LLM-generated ground truth as circular; the same circularity applies
+in human form. Any future run of this design should separate
+annotation from adjudication and blind the matching step.
 
 ## Ground rules (preserved from kickoff)
 

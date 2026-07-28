@@ -32,7 +32,11 @@ is not built *on* Tessera today (adopting `.tessera/` is Open decision D4 — de
 
 ## pr-arbiter's contributions to the seams
 - The **review pattern** that graduates into the tool backing Tessera's `/arbiter`, running on
-  conclave's fleet (seam S4, ADR-gated — needs **Phase 3**, see `docs/PHASE_3_RESUMPTION.md`).
+  conclave's fleet (seam S4). **Status changed 2026-07-28:** S4's stated prerequisite was "pr-arbiter
+  Phase 3." Phase 3 was never implemented and this repo is now frozen, so that prerequisite is void.
+  The pattern graduated directly into a standalone engine repo, `arbiter`, which is where S4 is now
+  satisfied from. The canonical contract still names the old gate and needs the same edit
+  (Tessera-hosted — fix it there, not here).
 - The **"true finding" scoring function** for the union-recall divergence variant (seam S2) —
   co-owned with conclave; pr-arbiter defines what counts as a finding (the typed-finding schema).
 - Consumes conclave's gateway via `base_url` (seam S1).

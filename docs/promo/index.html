@@ -337,7 +337,7 @@
 <section id="numbers">
   <div class="wrap">
     <h2 class="section-title">Headline numbers</h2>
-    <p class="section-sub">All Phase 1 scores on the same 20-PR corpus. Critical recall reported separately — missing a critical is qualitatively worse than missing a low, and a single weighted score would hide that.</p>
+    <p class="section-sub">All Phase 1 scores on the same 20-PR corpus, all agents on Sonnet 4.6 — every claim below is model-conditional. Critical recall reported separately — missing a critical is qualitatively worse than missing a low, and a single weighted score would hide that.</p>
 
     <div class="table-toggle">
       <div class="switch" id="rubricSwitch" onclick="toggleRubric()"></div>
@@ -442,7 +442,7 @@
     <a href="../results/iter4_corpus_discovery.md">results/iter4_corpus_discovery.md — the pr_007 mislabel investigation</a>
     <a href="https://github.com/lciacci/pr-arbiter">github.com/lciacci/pr-arbiter — source</a>
   </div>
-  pr-arbiter — a stepping-stone POC. Phase 2 closed the writer loop and bounded the multi-agent effect under 3-seed variance; Phase 3 (coherence-dimension review, generalizing beyond planted-bug corpora) is designed and ratified but paused pending a senior-annotator pilot.
+  pr-arbiter — a stepping-stone POC, now complete and frozen. Phase 2 closed the writer loop and bounded the multi-agent effect under 3-seed variance. Phase 3 (coherence-dimension review, generalizing beyond planted-bug corpora) was designed and ratified but not implemented — the project moved from research to tooling instead, and the design stands as a record of where the research pointed. All results are model-conditional: Sonnet 4.6 for every agent, in every run.
 </footer>
 
 <script>

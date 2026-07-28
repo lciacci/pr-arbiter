@@ -1,5 +1,10 @@
 # pr-arbiter — improvements backlog
 
+> **Carried forward 2026-07-28.** This repo is frozen; these items move to the
+> `arbiter` engine repo. Status of each recorded inline below. Kept here because
+> both items were discovered by running pr-arbiter on a real diff, and that
+> provenance is worth preserving with the finding.
+
 Discrete enhancements queued for pickup. Captured outside a phase handoff so a
 single idea doesn't have to wait for a phase boundary.
 
@@ -31,6 +36,20 @@ before scoring.
 here — sqlfluff has no concept of taint or input provenance.
 
 ### IMP-002 — sqlfluff as a deterministic SQL pre-pass (the noise-floor fix)
+
+**Status 2026-07-28: deprioritized, not dropped — and partly moot.** A sweep of
+all 12 active repos found the SQL surface is thin and already handled where it
+exists: `settempo` has one `.sql` file (`neon-schema.sql`) and **already runs
+sqlfluff itself** (`.sqlfluff` + `scripts/sql/lint.sh`); `doris-migration-poc`
+has 20 `.sql` files but has been dormant since 2026-05-29. Nothing else tracks
+any `.sql` at all. So the deterministic lint layer this item proposes already
+lives in the repo that needs it, at the right level — the reviewer should not
+own it.
+
+Kept on the list rather than closed for two reasons: the SQL surface will
+thicken as public repos adopt real PR discipline, and SQL support is part of
+what would make the tool useful to someone other than its author. Revisit when
+there is standalone SQL under review that isn't already linted upstream.
 
 **Idea.** Run sqlfluff over SQL in the diff before the LLM review, to:
 

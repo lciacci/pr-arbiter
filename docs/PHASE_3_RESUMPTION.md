@@ -1,10 +1,25 @@
 # Phase 3 — resumption point
 
+> **Superseded 2026-07-28.** Phase 3 was never resumed. pr-arbiter's
+> research track closed and the work continued as a tool
+> (`arbiter`) instead. This document is preserved as the record of
+> where the design was left, not as a live plan. The pilot described
+> below was not run.
+>
+> One correction to record alongside it: the pilot as designed had a
+> single unblinded rater — the project lead — who was simultaneously
+> hypothesis author, dimension designer, annotator, and match
+> adjudicator. The design already rejected LLM-generated ground truth
+> as circular (see "What NOT to do"); the identical circularity
+> applies in human form and was not caught at the time. Anyone running
+> this design later should separate annotation from adjudication and
+> blind the matching step.
+
 Written 2026-05-15 at the Phase 3 checkpoint. This document is for
 the future-you who comes back to pr-arbiter after the pause. Read it
 first.
 
-## Status: paused
+## Status: paused (historical — see the superseded note above)
 
 Phase 3 design is complete and ratified. Implementation has not
 started and should not start yet. Phase 3 is paused on a single hard
